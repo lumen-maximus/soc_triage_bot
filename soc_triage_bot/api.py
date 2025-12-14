@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
 
-from .models import Signal, SignalType
+from .models import Signal, SignalType, SignalSource
 from .services import TriageService, EnrichmentService, ForecastingService, SimilarityService
 from .adapters import SIEMAdapter, EDRAdapter, ThreatIntelAdapter, VulnerabilityAdapter, CMDBAdapter
 
@@ -212,11 +212,11 @@ async def normalize_signal(raw_signal: Dict[str, Any]) -> Signal:
         signal_id=raw_signal.get("id", str(uuid.uuid4())),
         signal_type=signal_type_enum,
         timestamp=datetime.fromisoformat(raw_signal.get("timestamp", datetime.utcnow().isoformat())),
-        source={
-            "system": raw_signal.get("system", "unknown"),
-            "rule_id": raw_signal.get("rule_id"),
-            "rule_name": raw_signal.get("rule_name")
-        },
+        source=SignalSource(
+            system=raw_signal.get("system", "unknown"),
+            rule_id=raw_signal.get("rule_id"),
+            rule_name=raw_signal.get("rule_name")
+        ),
         title=raw_signal.get("title", "Untitled Signal"),
         description=raw_signal.get("description", ""),
         severity=raw_signal.get("severity", "medium"),

@@ -382,5 +382,5 @@ class ActionProposalService:
     def _generate_action_id(self, template_id: str, signal_id: str) -> str:
         """Generate unique action ID."""
         combined = f"{template_id}:{signal_id}"
-        hash_val = hashlib.md5(combined.encode()).hexdigest()[:8]
+        hash_val = hashlib.sha256(combined.encode()).hexdigest()[:8]
         return f"act-{hash_val}"

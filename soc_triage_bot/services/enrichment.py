@@ -1,8 +1,10 @@
 """Enrichment orchestration service."""
 
 import asyncio
+from datetime import datetime
 from typing import List, Dict, Any
 from ..models import Signal, EnrichmentResult
+from ..models.enrichment import EnrichmentStatus
 from ..adapters import BaseAdapter
 
 
@@ -35,8 +37,6 @@ class EnrichmentService:
         for adapter, result in zip(self.adapters, results):
             if isinstance(result, Exception):
                 # Handle adapter failures gracefully
-                from ..models.enrichment import EnrichmentStatus
-                from datetime import datetime
                 enrichments[adapter.name] = EnrichmentResult(
                     adapter=adapter.name,
                     status=EnrichmentStatus.FAILED,
