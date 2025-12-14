@@ -1,0 +1,27 @@
+{
+  "signal_id": "sig-20251214-002",
+  "signal_type": "ioc",
+  "timestamp": "2025-12-14T19:15:00Z",
+  "source": {
+    "system": "threat_feed",
+    "rule_name": "IOC Match - Malicious IP"
+  },
+  "title": "Connection to Known C2 Server",
+  "description": "Network connection detected to IP address associated with known command and control infrastructure",
+  "severity": "critical",
+  "entities": {
+    "ip": ["198.51.100.42"],
+    "hostname": ["server-prod-03"],
+    "port": ["443"]
+  },
+  "tags": ["c2", "malware", "network"],
+  "raw_data": {
+    "connection_time": "2025-12-14T19:14:30Z",
+    "bytes_sent": 1024,
+    "bytes_received": 4096,
+    "protocol": "https"
+  },
+  "metadata": {
+    "feed_source": "threat_intelligence_feed_1"
+  }
+}

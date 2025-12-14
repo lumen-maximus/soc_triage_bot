@@ -1,0 +1,28 @@
+{
+  "signal_id": "sig-20251214-001",
+  "signal_type": "siem_alert",
+  "timestamp": "2025-12-14T19:00:00Z",
+  "source": {
+    "system": "splunk",
+    "rule_id": "rule-powershell-001",
+    "rule_name": "Suspicious PowerShell Execution"
+  },
+  "title": "Suspicious PowerShell with Encoded Command",
+  "description": "PowerShell process detected with base64 encoded command line argument, commonly used by malware",
+  "severity": "high",
+  "entities": {
+    "hostname": ["workstation-01"],
+    "user": ["jdoe"],
+    "process": ["powershell.exe"],
+    "ip": ["192.0.2.15"]
+  },
+  "tags": ["malware", "powershell", "encoded"],
+  "raw_data": {
+    "command_line": "powershell.exe -encodedCommand JABzAD0ATgBlAHcALQBPAGIAagBlAGMAdAA=",
+    "parent_process": "explorer.exe",
+    "pid": 4567
+  },
+  "metadata": {
+    "analyst": "system"
+  }
+}
