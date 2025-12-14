@@ -1,7 +1,7 @@
 """Classification data models."""
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -34,7 +34,7 @@ class Classification(BaseModel):
         description="IDs of similar past cases"
     )
     
-    forecast_data: Optional[Dict[str, float]] = Field(
+    forecast_data: Optional[Dict[str, Any]] = Field(
         None,
         description="ETS forecast data"
     )
