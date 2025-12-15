@@ -1,21 +1,29 @@
 """Enterprise action proposal service.
 
 Generates, deduplicates, gates, and ranks action proposals from:
-1. Templates (runbooks/playbooks) keyed by signal type/subtype
-2. Case-learned actions (from high-similarity, recent, successful cases)
+1. Seeded runbooks/playbooks (governed templates from YAML)
+2. Templates (fallback signal-type-keyed templates)
 3. Contextual actions (parameterized "do X in tool Y for entity Z")
+4. Case-learned actions (from high-similarity, recent, successful cases)
+5. Case-linked playbook steps (from similar case artifacts, treated as "suggested")
 
 Enterprise features:
 - Dedupe by (intent|tool|owner|target_signature)
 - Gating (TP/FP/Review + data availability + risk/approval)
 - Ranking and capping (3-6 proposals at top, max 12-15 full plan)
+
+Enterprise merge precedence:
+1. Seeded templates (governed) - highest priority
+2. Generated context actions (parameterized, specific)
+3. Case-learned actions (only if high similarity + recent + successful)
+4. Case-linked playbook steps (treated as "suggested," not authoritative)
 """
 
 import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from ..models import (
     Action,
@@ -25,6 +33,12 @@ from ..models import (
     EnrichmentResult,
     Signal,
 )
+from ..models.triage_report import SimilarCase
+
+# Lazy imports to avoid circular dependencies
+if TYPE_CHECKING:
+    from .case_artifact_harvester import CaseArtifactHarvester
+    from .runbook_registry import RunbookRegistry
 
 
 class ActionIntent(str, Enum):
@@ -88,10 +102,12 @@ FULL_PLAN_MAX = 15
 class ActionProposalService:
     """Enterprise service for action proposal generation and management.
 
-    Generates actions from three sources:
-    1. Templates keyed by signal_type/subtype/incident_type
-    2. Case-learned actions from similar historical cases
-    3. Contextual actions parameterized by enrichment data
+    Generates actions from five sources (in precedence order):
+    1. Seeded runbooks/playbooks (governed templates from YAML) - HIGHEST
+    2. Templates (fallback signal-type-keyed templates)
+    3. Generated context actions (parameterized, specific)
+    4. Case-learned actions (only if high similarity + recent + successful)
+    5. Case-linked playbook steps (treated as "suggested," not authoritative) - LOWEST
 
     Then applies:
     - Deduplication by (intent|tool|owner|target_signature)
@@ -99,11 +115,18 @@ class ActionProposalService:
     - Ranking and capping
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        runbook_registry: Optional[Any] = None,
+        case_artifact_harvester: Optional[Any] = None,
+    ):
         """Initialize action proposal service.
 
         Args:
             config: Configuration for action templates and thresholds
+            runbook_registry: Optional RunbookRegistry for governed templates
+            case_artifact_harvester: Optional CaseArtifactHarvester for case artifacts
         """
         self.config = config or {}
         self.templates = self._load_templates()
@@ -118,6 +141,32 @@ class ActionProposalService:
         self.top_proposals_min = self.config.get("top_proposals_min", TOP_PROPOSALS_MIN)
         self.top_proposals_max = self.config.get("top_proposals_max", TOP_PROPOSALS_MAX)
         self.full_plan_max = self.config.get("full_plan_max", FULL_PLAN_MAX)
+
+        # Initialize RunbookRegistry (lazy import to avoid circular deps)
+        self._runbook_registry = runbook_registry
+        if self._runbook_registry is None and self.config.get(
+            "enable_runbook_registry", True
+        ):
+            try:
+                from .runbook_registry import RunbookRegistry
+
+                self._runbook_registry = RunbookRegistry()
+            except ImportError:
+                self._runbook_registry = None
+
+        # Initialize CaseArtifactHarvester (lazy import)
+        self._case_harvester = case_artifact_harvester
+        if self._case_harvester is None and self.config.get(
+            "enable_case_harvester", True
+        ):
+            try:
+                from .case_artifact_harvester import CaseArtifactHarvester
+
+                self._case_harvester = CaseArtifactHarvester(
+                    runbook_registry=self._runbook_registry
+                )
+            except ImportError:
+                self._case_harvester = None
 
     def _load_templates(self) -> Dict[str, List[Dict[str, Any]]]:
         """Load action templates keyed by signal type.
@@ -574,13 +623,16 @@ class ActionProposalService:
         classification: Classification,
         enrichments: Dict[str, EnrichmentResult],
         similar_cases: Optional[List[Tuple[str, float, str]]] = None,
+        similar_cases_models: Optional[List[Any]] = None,
     ) -> List[Action]:
         """Generate enterprise action proposals for a signal.
 
-        Combines three sources:
-        1. Templates keyed by signal type
-        2. Case-learned actions from similar historical cases
-        3. Contextual actions parameterized by enrichment data
+        Combines five sources in precedence order:
+        1. Seeded runbooks/playbooks (governed templates from YAML) - HIGHEST
+        2. Templates (fallback signal-type-keyed templates)
+        3. Generated context actions (parameterized, specific)
+        4. Case-learned actions (only if high similarity + recent + successful)
+        5. Case-linked playbook steps (suggested, not authoritative) - LOWEST
 
         Then applies deduplication, gating, ranking, and capping.
 
@@ -589,30 +641,61 @@ class ActionProposalService:
             classification: Classification result
             enrichments: Enrichment results
             similar_cases: Optional list of (case_id, similarity, outcome) tuples
+            similar_cases_models: Optional list of SimilarCase model objects with
+                                  runbook_refs, attachments_metadata fields
 
         Returns:
             List of proposed actions, deduplicated, gated, ranked, and capped
         """
         proposals: List[Action] = []
 
-        # Generate from signal-type-keyed templates
+        # =====================================================================
+        # SOURCE 1: Seeded runbooks/playbooks (GOVERNED - HIGHEST PRECEDENCE)
+        # =====================================================================
+        if self._runbook_registry:
+            seeded_actions = self._generate_from_seeded_runbooks(
+                signal, classification, enrichments
+            )
+            proposals.extend(seeded_actions)
+
+        # =====================================================================
+        # SOURCE 2: Fallback templates (signal-type-keyed)
+        # Only if seeded runbooks didn't cover this signal type
+        # =====================================================================
         template_actions = self._generate_from_templates(
             signal, classification, enrichments
         )
         proposals.extend(template_actions)
 
-        # Generate case-learned actions from similar cases
+        # =====================================================================
+        # SOURCE 3: Contextual actions (parameterized from enrichments)
+        # =====================================================================
+        contextual_actions = self._generate_contextual_actions(
+            signal, classification, enrichments
+        )
+        proposals.extend(contextual_actions)
+
+        # =====================================================================
+        # SOURCE 4: Case-learned actions (from similar cases, high confidence)
+        # =====================================================================
         if similar_cases:
             learned_actions = self._generate_learned_actions(
                 signal, classification, similar_cases
             )
             proposals.extend(learned_actions)
 
-        # Generate contextual actions from enrichment data
-        contextual_actions = self._generate_contextual_actions(
-            signal, classification, enrichments
-        )
-        proposals.extend(contextual_actions)
+        # =====================================================================
+        # SOURCE 5: Case-linked playbook steps (SUGGESTED, not authoritative)
+        # =====================================================================
+        if similar_cases_models and self._case_harvester:
+            case_linked_actions = self._generate_case_linked_actions(
+                signal, similar_cases_models
+            )
+            proposals.extend(case_linked_actions)
+
+        # =====================================================================
+        # Enterprise dedupe, gating, ranking, capping
+        # =====================================================================
 
         # Enterprise deduplication by (intent|tool|owner|target_signature)
         proposals = self._deduplicate_actions_enterprise(proposals, signal)
@@ -620,13 +703,71 @@ class ActionProposalService:
         # Apply gating (TP/FP/Review + data availability + risk/approval)
         proposals = self._apply_gating(proposals, classification, enrichments)
 
-        # Rank by priority, confidence, and risk tier
+        # Rank by priority, confidence, source precedence, and risk tier
         proposals = self._rank_actions_enterprise(proposals)
 
         # Cap proposals: top 3-6, full plan max 12-15
         proposals = self._cap_proposals(proposals)
 
         return proposals
+
+    def _generate_from_seeded_runbooks(
+        self,
+        signal: Signal,
+        classification: Classification,
+        enrichments: Dict[str, EnrichmentResult],
+    ) -> List[Action]:
+        """Generate actions from seeded runbooks/playbooks (governed templates).
+
+        These have HIGHEST precedence and are treated as authoritative.
+        """
+        if not self._runbook_registry:
+            return []
+
+        actions = []
+
+        # Find applicable runbooks for this signal
+        applicable_runbooks = self._runbook_registry.find_applicable_runbooks(
+            signal=signal,
+            classification_label=classification.label,
+            min_confidence=classification.confidence,
+        )
+
+        for runbook in applicable_runbooks:
+            # Convert runbook actions to model Actions
+            runbook_actions = self._runbook_registry.actions_to_model_actions(
+                runbook.actions, signal, runbook.id
+            )
+            actions.extend(runbook_actions)
+
+        return actions
+
+    def _generate_case_linked_actions(
+        self,
+        signal: Signal,
+        similar_cases_models: List[Any],
+    ) -> List[Action]:
+        """Generate actions from case-linked playbook references.
+
+        These are treated as SUGGESTED (not authoritative) unless they
+        reference whitelisted runbooks from the RunbookRegistry.
+        """
+        if not self._case_harvester:
+            return []
+
+        # Harvest actions from similar case artifacts
+        harvest_result = self._case_harvester.harvest_actions(
+            similar_cases=similar_cases_models,
+            signal_entities=signal.entities,
+        )
+
+        # Convert harvested actions to model Actions
+        actions = self._case_harvester.actions_to_model_actions(
+            harvested_actions=harvest_result.actions,
+            signal_entities=signal.entities,
+        )
+
+        return actions
 
     def _generate_from_templates(
         self,
@@ -1037,11 +1178,24 @@ class ActionProposalService:
     ) -> List[Action]:
         """Enterprise deduplication by (intent|tool|owner|target_signature).
 
-        When duplicates found, keeps the one with:
-        1. Higher confidence
-        2. Lower priority number (more urgent)
-        3. Template source preferred over learned/contextual
+        When duplicates found, keeps the one with highest source precedence:
+        1. seeded (governed runbooks) - HIGHEST
+        2. template (fallback templates)
+        3. contextual (generated from enrichments)
+        4. learned (from similar case outcomes)
+        5. case_linked (suggested from case artifacts) - LOWEST
+
+        Then by confidence and priority.
         """
+        # Source precedence ranking (higher = better)
+        source_precedence = {
+            "seeded": 5,  # Governed runbooks - highest
+            "template": 4,  # Fallback templates
+            "contextual": 3,  # Generated context actions
+            "learned": 2,  # Case-learned actions
+            "case_linked": 1,  # Case-linked (suggested)
+        }
+
         signature_map: Dict[str, List[Action]] = {}
 
         for action in actions:
@@ -1056,13 +1210,13 @@ class ActionProposalService:
             if len(group) == 1:
                 deduplicated.append(group[0])
             else:
-                # Pick best action from group
+                # Pick best action from group using source precedence first
                 best = max(
                     group,
                     key=lambda a: (
+                        source_precedence.get(a.source, 0),  # Source precedence first
                         a.confidence,
                         -a.priority,
-                        1 if a.source == "template" else 0,
                     ),
                 )
                 deduplicated.append(best)
@@ -1208,21 +1362,30 @@ class ActionProposalService:
         return required
 
     def _rank_actions_enterprise(self, actions: List[Action]) -> List[Action]:
-        """Enterprise ranking considering priority, confidence, risk, and source.
+        """Enterprise ranking with source precedence.
 
-        Ranking factors:
-        1. Priority (lower = more urgent)
-        2. Confidence (higher = better)
-        3. Source preference: template > learned > contextual
+        Ranking factors (in order):
+        1. Source precedence: seeded > template > contextual > learned > case_linked
+        2. Priority (lower = more urgent)
+        3. Confidence (higher = better)
         4. Automation available (prefer automated)
         """
-        source_rank = {"template": 3, "learned": 2, "contextual": 1}
+        # Source precedence ranking (higher = better)
+        source_rank = {
+            "seeded": 5,  # Governed runbooks - highest
+            "template": 4,  # Fallback templates
+            "contextual": 3,  # Generated context actions
+            "learned": 2,  # Case-learned actions
+            "case_linked": 1,  # Case-linked (suggested)
+        }
 
-        def rank_key(action: Action) -> Tuple[int, float, int, int]:
+        def rank_key(action: Action) -> Tuple[int, int, float, int]:
             return (
+                -source_rank.get(
+                    action.source, 0
+                ),  # Source precedence (negated for sort)
                 action.priority,
                 -action.confidence,
-                -source_rank.get(action.source, 0),
                 -1 if action.automation_available else 0,
             )
 

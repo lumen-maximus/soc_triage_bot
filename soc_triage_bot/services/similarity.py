@@ -12,7 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from ..models import Signal
-from ..models.triage_report import SimilarCase
+from ..models.triage_report import AttachmentMetadata, RunbookRef, SimilarCase
 
 
 @dataclass
@@ -43,21 +43,25 @@ class SimilarityService:
     - Entity-based matching (rule_id, indicators, hosts)
     - Weighted scoring: rule_id > indicators > entities > text
     - Returns SimilarCase objects with resolution info
+    - SOAR artifact enrichment (runbook_refs, attachments)
     """
 
     def __init__(
         self,
         case_database: Optional[List[Dict[str, Any]]] = None,
         config: Optional[Dict[str, Any]] = None,
+        soar_adapter: Optional[Any] = None,
     ):
         """Initialize similarity service.
 
         Args:
             case_database: Historical case database
             config: Configuration for similarity weights
+            soar_adapter: Optional SOAR adapter for fetching case artifacts
         """
         self.case_database = case_database or []
         self.vectorizer = TfidfVectorizer(max_features=100)
+        self.soar_adapter = soar_adapter
         self.config = config or {}
 
         # Entity matching weights (priority: rule > ioc > entity > text)
@@ -313,21 +317,77 @@ class SimilarityService:
         self,
         signal: Signal,
         top_k: int = 5,
+        enrich_artifacts: bool = True,
     ) -> List[SimilarCase]:
         """Find similar cases and return as SimilarCase models.
 
         Args:
             signal: Signal to find similar cases for
             top_k: Number of top similar cases to return
+            enrich_artifacts: If True and soar_adapter is set, fetch artifacts
 
         Returns:
-            List of SimilarCase Pydantic models
+            List of SimilarCase Pydantic models with artifact data
         """
         results = self.find_similar_extended(signal, top_k)
         similar_cases: List[SimilarCase] = []
 
         for res in results:
             case_data = self.get_case_details(res.case_id) or {}
+
+            # Build RunbookRef objects from case data
+            runbook_refs: List[RunbookRef] = []
+            attachments_metadata: List[AttachmentMetadata] = []
+            tasks_template_id: Optional[str] = None
+
+            # Try to enrich from SOAR adapter if available
+            if enrich_artifacts and self.soar_adapter:
+                try:
+                    soar_case = self._fetch_soar_case_sync(res.case_id)
+                    if soar_case:
+                        # Extract runbook refs
+                        for ref_data in soar_case.get("runbook_refs", []):
+                            runbook_refs.append(
+                                RunbookRef(
+                                    ref_id=ref_data.get("ref_id", ""),
+                                    ref_type=ref_data.get("ref_type", "runbook"),
+                                    source=ref_data.get("source", "soar"),
+                                    title=ref_data.get("title"),
+                                    url=ref_data.get("url"),
+                                    whitelisted=ref_data.get("whitelisted", False),
+                                )
+                            )
+                        # Extract attachments
+                        for att_data in soar_case.get("attachments_metadata", []):
+                            attachments_metadata.append(
+                                AttachmentMetadata(
+                                    attachment_id=att_data.get("attachment_id", ""),
+                                    filename=att_data.get("filename", ""),
+                                    content_type=att_data.get(
+                                        "content_type", "application/octet-stream"
+                                    ),
+                                    size_bytes=att_data.get("size_bytes"),
+                                    is_playbook=att_data.get("is_playbook", False),
+                                )
+                            )
+                        # Get tasks template ID
+                        tasks_template_id = soar_case.get("tasks_template_id")
+                except Exception:
+                    pass  # Continue without artifacts if SOAR fails
+
+            # Fallback: check case_data from local database
+            if not runbook_refs and "runbook_refs" in case_data:
+                for ref_data in case_data.get("runbook_refs", []):
+                    if isinstance(ref_data, dict):
+                        runbook_refs.append(
+                            RunbookRef(
+                                ref_id=ref_data.get("ref_id", ""),
+                                ref_type=ref_data.get("ref_type", "runbook"),
+                                source=ref_data.get("source", "local"),
+                                title=ref_data.get("title"),
+                                whitelisted=ref_data.get("whitelisted", False),
+                            )
+                        )
 
             similar_cases.append(
                 SimilarCase(
@@ -341,10 +401,49 @@ class SimilarityService:
                     ],
                     actions_taken=case_data.get("actions_taken", []),
                     notes=case_data.get("notes", ""),
+                    runbook_refs=runbook_refs,
+                    tasks_template_id=tasks_template_id,
+                    attachments_metadata=attachments_metadata,
                 )
             )
 
         return similar_cases
+
+    def _fetch_soar_case_sync(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch case from SOAR adapter synchronously.
+
+        Args:
+            case_id: Case ID to fetch
+
+        Returns:
+            Case data dict or None
+        """
+        if not self.soar_adapter:
+            return None
+
+        # Try sync method first
+        if hasattr(self.soar_adapter, "get_case_sync"):
+            return self.soar_adapter.get_case_sync(case_id)
+
+        # Try async with loop
+        if hasattr(self.soar_adapter, "get_case"):
+            import asyncio
+
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            if loop.is_running():
+                # Can't await in running loop, try sync fallback
+                if hasattr(self.soar_adapter, "_get_mock_case"):
+                    return self.soar_adapter._get_mock_case(case_id)
+                return None
+
+            return loop.run_until_complete(self.soar_adapter.get_case(case_id))
+
+        return None
 
     # =========================================================================
     # LEGACY METHODS (for backward compatibility)

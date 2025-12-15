@@ -169,3 +169,478 @@ class SIEMAdapter(BaseAdapter):
             filled.append((bucket_time, count))
 
         return filled
+
+    # =========================================================================
+    # RUNBOOK/PLAYBOOK FUNCTIONS (for SOAR integration)
+    # =========================================================================
+
+    async def list_runbooks(
+        self, signal_type: str = None, category: str = None
+    ) -> List[Dict[str, Any]]:
+        """List available runbooks from SOAR.
+
+        Args:
+            signal_type: Optional filter by signal type
+            category: Optional filter by category
+
+        Returns:
+            List of runbook metadata dictionaries
+        """
+        # In production, query SOAR API for runbooks
+        # Mock implementation for demonstration
+        mock_runbooks = [
+            {
+                "id": "SOAR-RB-001",
+                "title": "Phishing Email Triage",
+                "category": "investigation",
+                "signal_types": ["EMAIL_SECURITY_ALERT"],
+                "version": "2.1",
+                "last_updated": "2024-11-15",
+                "action_count": 6,
+            },
+            {
+                "id": "SOAR-RB-002",
+                "title": "Malware Alert Response",
+                "category": "containment",
+                "signal_types": ["EDR_DETECTION", "SIEM_ALERT"],
+                "version": "3.0",
+                "last_updated": "2024-12-01",
+                "action_count": 8,
+            },
+            {
+                "id": "SOAR-PB-001",
+                "title": "Incident Response Workflow",
+                "category": "incident_response",
+                "signal_types": ["SIEM_ALERT", "EDR_DETECTION", "IOC"],
+                "version": "1.5",
+                "last_updated": "2024-10-20",
+                "action_count": 12,
+            },
+        ]
+
+        # Apply filters
+        results = mock_runbooks
+        if signal_type:
+            results = [r for r in results if signal_type in r.get("signal_types", [])]
+        if category:
+            results = [r for r in results if r.get("category") == category]
+
+        return results
+
+    async def get_runbook(self, runbook_id: str) -> Dict[str, Any]:
+        """Fetch a specific runbook from SOAR by ID.
+
+        Args:
+            runbook_id: The runbook or playbook ID
+
+        Returns:
+            Complete runbook with actions, or None if not found
+        """
+        # In production, query SOAR API for runbook details
+        # Mock implementation
+        mock_runbooks = {
+            "SOAR-RB-001": {
+                "id": "SOAR-RB-001",
+                "title": "Phishing Email Triage",
+                "description": "Standard playbook for triaging phishing emails",
+                "category": "investigation",
+                "signal_types": ["EMAIL_SECURITY_ALERT"],
+                "version": "2.1",
+                "author": "SOC Engineering",
+                "approved_by": "SOC Manager",
+                "approval_date": "2024-11-01",
+                "actions": [
+                    {
+                        "id": "step-1",
+                        "intent": "investigate",
+                        "tool": "Email Security",
+                        "owner": "SOC",
+                        "title": "Analyze Email Headers",
+                        "description": "Review email headers for spoofing indicators",
+                        "steps": ["Check SPF/DKIM/DMARC", "Review sender reputation"],
+                        "priority": 1,
+                    },
+                    {
+                        "id": "step-2",
+                        "intent": "contain",
+                        "tool": "Email Security",
+                        "owner": "SOC",
+                        "title": "Quarantine Email",
+                        "description": "Remove email from all mailboxes",
+                        "steps": ["Search by Message-ID", "Quarantine copies"],
+                        "priority": 1,
+                    },
+                ],
+            },
+            "SOAR-RB-002": {
+                "id": "SOAR-RB-002",
+                "title": "Malware Alert Response",
+                "description": "Response playbook for malware detections",
+                "category": "containment",
+                "signal_types": ["EDR_DETECTION", "SIEM_ALERT"],
+                "version": "3.0",
+                "author": "IR Team",
+                "approved_by": "CISO",
+                "approval_date": "2024-12-01",
+                "actions": [
+                    {
+                        "id": "step-1",
+                        "intent": "investigate",
+                        "tool": "EDR",
+                        "owner": "SOC",
+                        "title": "Verify Detection",
+                        "description": "Confirm malware detection is valid",
+                        "steps": ["Review EDR alert", "Check file reputation"],
+                        "priority": 1,
+                    },
+                    {
+                        "id": "step-2",
+                        "intent": "contain",
+                        "tool": "EDR",
+                        "owner": "SOC",
+                        "title": "Isolate Host",
+                        "description": "Network isolate the affected host",
+                        "steps": ["Verify host status", "Initiate isolation"],
+                        "priority": 1,
+                    },
+                ],
+            },
+        }
+
+        return mock_runbooks.get(runbook_id)
+
+    def get_runbook_actions(self, runbook_id: str) -> List[Dict[str, Any]]:
+        """Get actions from a runbook (synchronous wrapper).
+
+        Args:
+            runbook_id: The runbook ID
+
+        Returns:
+            List of action dictionaries
+        """
+        import asyncio
+
+        # Use asyncio to run the async method
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            # If we're in an async context, just do it synchronously with mock data
+            mock_runbooks = {
+                "SOAR-RB-001": [
+                    {
+                        "id": "step-1",
+                        "intent": "investigate",
+                        "tool": "Email Security",
+                        "owner": "SOC",
+                        "title": "Analyze Email Headers",
+                        "description": "Review email headers for spoofing indicators",
+                        "steps": ["Check SPF/DKIM/DMARC", "Review sender reputation"],
+                        "priority": 1,
+                    },
+                ],
+                "SOAR-RB-002": [
+                    {
+                        "id": "step-1",
+                        "intent": "investigate",
+                        "tool": "EDR",
+                        "owner": "SOC",
+                        "title": "Verify Detection",
+                        "description": "Confirm malware detection is valid",
+                        "steps": ["Review EDR alert", "Check file reputation"],
+                        "priority": 1,
+                    },
+                ],
+            }
+            return mock_runbooks.get(runbook_id, [])
+
+        runbook = loop.run_until_complete(self.get_runbook(runbook_id))
+        if runbook:
+            return runbook.get("actions", [])
+        return []
+
+    # =========================================================================
+    # CASE AND ARTIFACT RETRIEVAL (for CaseArtifactHarvester)
+    # =========================================================================
+
+    async def get_case(self, case_id: str) -> Dict[str, Any]:
+        """Fetch a case from SOAR by ID.
+
+        Returns complete case data including:
+        - runbook_refs: References to playbooks/runbooks used
+        - tasks_template_id: Template used for tasks
+        - attachments_metadata: Attached files/artifacts
+        - actions_taken: Actions performed on the case
+
+        Args:
+            case_id: The SOAR case ID
+
+        Returns:
+            Complete case dictionary or None if not found
+        """
+        # In production, query SOAR API for case details
+        # Mock implementation for demonstration
+        mock_cases = {
+            "CASE-2024-001": {
+                "case_id": "CASE-2024-001",
+                "title": "Malware Detection on WS-FINANCE-01",
+                "signal_type": "EDR_DETECTION",
+                "created_at": "2024-11-20T10:30:00Z",
+                "resolved_at": "2024-11-20T14:45:00Z",
+                "disposition": "TP",
+                "outcome": "TP",
+                "severity": "high",
+                "runbook_refs": [
+                    {
+                        "ref_id": "SOAR-RB-002",
+                        "ref_type": "runbook",
+                        "source": "soar",
+                        "title": "Malware Alert Response",
+                        "url": "https://soar.internal/runbooks/SOAR-RB-002",
+                        "whitelisted": True,
+                    }
+                ],
+                "tasks_template_id": "TPL-MALWARE-001",
+                "attachments_metadata": [
+                    {
+                        "attachment_id": "ATT-001",
+                        "filename": "malware_sample.zip",
+                        "content_type": "application/zip",
+                        "size_bytes": 45678,
+                        "is_playbook": False,
+                    },
+                    {
+                        "attachment_id": "ATT-002",
+                        "filename": "containment_steps.yaml",
+                        "content_type": "application/yaml",
+                        "size_bytes": 2048,
+                        "is_playbook": True,
+                    },
+                ],
+                "actions_taken": [
+                    "Isolated host WS-FINANCE-01 via EDR",
+                    "Collected forensic artifacts",
+                    "Blocked malicious hash at EDR policy",
+                    "Notified IT for reimaging",
+                ],
+                "entities": {
+                    "hostname": ["WS-FINANCE-01"],
+                    "ip": ["10.1.50.23"],
+                    "indicator": ["abc123hash"],
+                },
+                "notes": "Emotet dropper detected via behavioral detection. Host isolated within 15 minutes.",
+            },
+            "CASE-2024-002": {
+                "case_id": "CASE-2024-002",
+                "title": "Phishing Email Campaign",
+                "signal_type": "EMAIL_SECURITY_ALERT",
+                "created_at": "2024-11-22T08:15:00Z",
+                "resolved_at": "2024-11-22T11:30:00Z",
+                "disposition": "TP",
+                "outcome": "TP",
+                "severity": "medium",
+                "runbook_refs": [
+                    {
+                        "ref_id": "SOAR-RB-001",
+                        "ref_type": "runbook",
+                        "source": "soar",
+                        "title": "Phishing Email Triage",
+                        "url": "https://soar.internal/runbooks/SOAR-RB-001",
+                        "whitelisted": True,
+                    }
+                ],
+                "tasks_template_id": "TPL-PHISH-001",
+                "attachments_metadata": [
+                    {
+                        "attachment_id": "ATT-003",
+                        "filename": "email_headers.txt",
+                        "content_type": "text/plain",
+                        "size_bytes": 1024,
+                        "is_playbook": False,
+                    },
+                ],
+                "actions_taken": [
+                    "Quarantined phishing email from all mailboxes",
+                    "Blocked sender domain",
+                    "Reset credentials for 3 users who clicked",
+                    "Sent awareness reminder to affected users",
+                ],
+                "entities": {
+                    "email": ["phishing@malicious.com"],
+                    "domain": ["malicious.com"],
+                    "username": ["jsmith", "bjones", "mwilson"],
+                },
+                "notes": "BEC attempt impersonating CFO. 3 users clicked, none entered credentials.",
+            },
+            "CASE-2024-003": {
+                "case_id": "CASE-2024-003",
+                "title": "IOC Hit - Known C2 Domain",
+                "signal_type": "IOC",
+                "created_at": "2024-12-01T14:00:00Z",
+                "resolved_at": "2024-12-01T16:00:00Z",
+                "disposition": "FP",
+                "outcome": "FP",
+                "severity": "low",
+                "runbook_refs": [],  # No runbook used - was FP
+                "tasks_template_id": None,
+                "attachments_metadata": [],
+                "actions_taken": [
+                    "Investigated DNS request",
+                    "Confirmed domain sinkholed - benign",
+                    "Closed as false positive",
+                ],
+                "entities": {
+                    "domain": ["known-c2.example.com"],
+                    "hostname": ["WS-DEV-05"],
+                },
+                "notes": "DNS sinkhole traffic, not actual C2 communication.",
+            },
+        }
+
+        return mock_cases.get(case_id)
+
+    async def get_case_artifacts(self, case_id: str) -> Dict[str, Any]:
+        """Fetch artifacts from a SOAR case.
+
+        Returns structured artifact data including:
+        - runbook_refs: All runbook/playbook references
+        - attachments: Attachment metadata (not content)
+        - tasks_template_id: Template ID if used
+
+        Args:
+            case_id: The SOAR case ID
+
+        Returns:
+            Artifacts dictionary
+        """
+        case = await self.get_case(case_id)
+        if not case:
+            return {
+                "case_id": case_id,
+                "found": False,
+                "runbook_refs": [],
+                "attachments_metadata": [],
+                "tasks_template_id": None,
+            }
+
+        return {
+            "case_id": case_id,
+            "found": True,
+            "runbook_refs": case.get("runbook_refs", []),
+            "attachments_metadata": case.get("attachments_metadata", []),
+            "tasks_template_id": case.get("tasks_template_id"),
+        }
+
+    async def fetch_attachment(
+        self, case_id: str, attachment_id: str
+    ) -> Dict[str, Any]:
+        """Fetch attachment content from SOAR (policy-controlled).
+
+        NOTE: In production, this should be policy-controlled.
+        Only whitelisted attachment types should be fetchable.
+
+        Args:
+            case_id: The SOAR case ID
+            attachment_id: The attachment ID
+
+        Returns:
+            Attachment content and metadata
+        """
+        # Mock - in production, this would fetch from SOAR
+        # and check against content policies
+        mock_attachments = {
+            "ATT-002": {
+                "attachment_id": "ATT-002",
+                "case_id": "CASE-2024-001",
+                "filename": "containment_steps.yaml",
+                "content_type": "application/yaml",
+                "content": """
+steps:
+  - name: Isolate host
+    tool: EDR
+    owner: SOC
+  - name: Collect artifacts
+    tool: EDR
+    owner: IR
+  - name: Block hash
+    tool: EDR
+    owner: SOC
+""",
+            }
+        }
+
+        return mock_attachments.get(attachment_id, {"error": "Not found"})
+
+    def get_case_sync(self, case_id: str) -> Dict[str, Any]:
+        """Synchronous wrapper for get_case.
+
+        Args:
+            case_id: The SOAR case ID
+
+        Returns:
+            Complete case dictionary or None
+        """
+        import asyncio
+
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            # Return mock data directly if in async context
+            return self._get_mock_case(case_id)
+
+        return loop.run_until_complete(self.get_case(case_id))
+
+    def _get_mock_case(self, case_id: str) -> Dict[str, Any]:
+        """Get mock case data for synchronous access."""
+        mock_cases = {
+            "CASE-2024-001": {
+                "case_id": "CASE-2024-001",
+                "title": "Malware Detection on WS-FINANCE-01",
+                "signal_type": "EDR_DETECTION",
+                "disposition": "TP",
+                "runbook_refs": [
+                    {
+                        "ref_id": "SOAR-RB-002",
+                        "ref_type": "runbook",
+                        "source": "soar",
+                        "title": "Malware Alert Response",
+                        "whitelisted": True,
+                    }
+                ],
+                "tasks_template_id": "TPL-MALWARE-001",
+                "attachments_metadata": [],
+                "actions_taken": [
+                    "Isolated host via EDR",
+                    "Collected forensic artifacts",
+                ],
+            },
+            "CASE-2024-002": {
+                "case_id": "CASE-2024-002",
+                "title": "Phishing Email Campaign",
+                "signal_type": "EMAIL_SECURITY_ALERT",
+                "disposition": "TP",
+                "runbook_refs": [
+                    {
+                        "ref_id": "SOAR-RB-001",
+                        "ref_type": "runbook",
+                        "source": "soar",
+                        "title": "Phishing Email Triage",
+                        "whitelisted": True,
+                    }
+                ],
+                "tasks_template_id": "TPL-PHISH-001",
+                "attachments_metadata": [],
+                "actions_taken": [
+                    "Quarantined email",
+                    "Blocked sender domain",
+                ],
+            },
+        }
+        return mock_cases.get(case_id)
