@@ -148,7 +148,7 @@ def test_classification_service(sample_signal):
 
     assert classification.disposition is not None
     assert 0 <= classification.tp_likelihood <= 1
-    assert len(classification.reasons_tp) > 0 or len(classification.reasons_fp) >= 0
+    assert len(classification.reasons_tp) > 0 or len(classification.reasons_fp) > 0
 
 
 def test_action_proposal_service(sample_signal):

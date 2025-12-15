@@ -66,7 +66,8 @@ async def health_check():
 @app.post("/triage", response_model=Dict[str, Any])
 async def triage_signal(
     signal: Signal,
-    historical_data: Optional[MultiTrackHistoricalData] = None
+    historical_data: Optional[MultiTrackHistoricalData] = None,
+    legacy_historical_data: Optional[List[Dict[str, Any]]] = None
 ):
     """
     Triage a security signal.
@@ -83,13 +84,45 @@ async def triage_signal(
     Args:
         signal: Normalized security signal
         historical_data: Optional multi-track historical time series data
+        legacy_historical_data: Optional legacy format (list of dicts with timestamp/count)
+            - Deprecated: Use historical_data instead
         
     Returns:
         Triage result with classification, actions, and structured report
     """
     try:
+        # Support both new and legacy historical data formats
+        multi_track_data = historical_data
+        if multi_track_data is None and legacy_historical_data is not None:
+            # Convert legacy list format to MultiTrackHistoricalData
+            values = [d.get("count", 0) for d in legacy_historical_data]
+            from datetime import datetime as dt
+            timestamps_raw = [d.get("timestamp") for d in legacy_historical_data]
+            timestamps = []
+            for ts in timestamps_raw:
+                if isinstance(ts, dt):
+                    timestamps.append(ts)
+                elif isinstance(ts, str):
+                    try:
+                        timestamps.append(dt.fromisoformat(ts.replace("Z", "+00:00")))
+                    except ValueError:
+                        timestamps.append(datetime.utcnow())
+                else:
+                    timestamps.append(datetime.utcnow())
+            
+            track_a = TrackTimeSeries(
+                track_name="rule",
+                entity_key="rule_id",
+                entity_value=signal.source.rule_id or "unknown",
+                metric_name="alert_count",
+                timestamps=timestamps,
+                values=values,
+                bucket_minutes=15,
+            )
+            multi_track_data = MultiTrackHistoricalData(track_a=track_a)
+        
         # Execute extended triage with multi-track support
-        result = await triage_service.triage_extended(signal, historical_data)
+        result = await triage_service.triage_extended(signal, multi_track_data)
         
         # Store result
         triage_id = str(uuid.uuid4())
