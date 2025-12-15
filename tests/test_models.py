@@ -1,12 +1,19 @@
 """Tests for data models."""
 
-import pytest
 from datetime import datetime
+
+import pytest
+
 from soc_triage_bot.models import (
-    Signal, SignalType, SignalSource,
-    EnrichmentResult, EnrichmentStatus,
-    Classification, ClassificationLabel,
-    Action, ActionType
+    Action,
+    ActionType,
+    Classification,
+    ClassificationLabel,
+    EnrichmentResult,
+    EnrichmentStatus,
+    Signal,
+    SignalSource,
+    SignalType,
 )
 
 
@@ -16,17 +23,14 @@ def test_signal_creation():
         signal_id="test-001",
         signal_type=SignalType.SIEM_ALERT,
         timestamp=datetime.utcnow(),
-        source=SignalSource(
-            system="test_siem",
-            rule_id="rule-001"
-        ),
+        source=SignalSource(system="test_siem", rule_id="rule-001"),
         title="Test Alert",
         description="Test description",
         severity="high",
         entities={"ip": ["192.168.1.1"]},
-        tags=["test"]
+        tags=["test"],
     )
-    
+
     assert signal.signal_id == "test-001"
     assert signal.signal_type == SignalType.SIEM_ALERT
     assert signal.severity == "high"
@@ -39,9 +43,9 @@ def test_enrichment_result():
         adapter="test_adapter",
         status=EnrichmentStatus.SUCCESS,
         data={"key": "value"},
-        duration_ms=100.5
+        duration_ms=100.5,
     )
-    
+
     assert result.adapter == "test_adapter"
     assert result.status == EnrichmentStatus.SUCCESS
     assert result.data["key"] == "value"
@@ -53,9 +57,10 @@ def test_classification():
         label=ClassificationLabel.TRUE_POSITIVE,
         confidence=0.85,
         reasoning=["Reason 1", "Reason 2"],
-        factors={"threat_intel": 0.9}
+        factors={"threat_intel": 0.9},
+        forecast_data=None,
     )
-    
+
     assert classification.label == ClassificationLabel.TRUE_POSITIVE
     assert classification.confidence == 0.85
     assert len(classification.reasoning) == 2
@@ -72,9 +77,9 @@ def test_action():
         steps=["Step 1", "Step 2"],
         reasoning="Test reasoning",
         source="template",
-        confidence=0.9
+        confidence=0.9,
     )
-    
+
     assert action.action_id == "act-001"
     assert action.action_type == ActionType.ISOLATE
     assert action.priority == 1
