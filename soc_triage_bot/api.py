@@ -8,6 +8,7 @@ import uuid
 
 from .models import Signal, SignalType, SignalSource
 from .services import TriageService, EnrichmentService, ForecastingService, SimilarityService
+from .services.forecasting import MultiTrackHistoricalData, TrackTimeSeries
 from .adapters import SIEMAdapter, EDRAdapter, ThreatIntelAdapter, VulnerabilityAdapter, CMDBAdapter
 
 # Initialize services
@@ -65,7 +66,7 @@ async def health_check():
 @app.post("/triage", response_model=Dict[str, Any])
 async def triage_signal(
     signal: Signal,
-    historical_data: Optional[List[Dict[str, Any]]] = None
+    historical_data: Optional[MultiTrackHistoricalData] = None
 ):
     """
     Triage a security signal.
@@ -73,7 +74,7 @@ async def triage_signal(
     This endpoint:
     1. Normalizes the input signal
     2. Runs concurrent enrichments
-    3. Performs ETS forecasting if historical data provided
+    3. Performs multi-track ETS forecasting if historical data provided
     4. Finds similar cases
     5. Classifies as TP/FP
     6. Generates action proposals
@@ -81,20 +82,21 @@ async def triage_signal(
     
     Args:
         signal: Normalized security signal
-        historical_data: Optional historical time series data
+        historical_data: Optional multi-track historical time series data
         
     Returns:
-        Triage result with classification and actions
+        Triage result with classification, actions, and structured report
     """
     try:
-        # Execute triage
-        result = await triage_service.triage(signal, historical_data)
+        # Execute extended triage with multi-track support
+        result = await triage_service.triage_extended(signal, historical_data)
         
         # Store result
         triage_id = str(uuid.uuid4())
         triage_results[triage_id] = result
         
-        return {
+        # Build response with both legacy and new fields
+        response = {
             "triage_id": triage_id,
             "signal_id": signal.signal_id,
             "classification": {
@@ -127,6 +129,25 @@ async def triage_signal(
             "duration_ms": result.duration_ms,
             "timestamp": result.timestamp.isoformat()
         }
+        
+        # Add new structured output if available
+        if result.classification_result:
+            response["classification_result"] = {
+                "disposition": result.classification_result.disposition,
+                "tp_likelihood": result.classification_result.tp_likelihood,
+                "severity": result.classification_result.severity,
+                "confidence": result.classification_result.confidence,
+                "reasons_tp": result.classification_result.reasons_tp,
+                "reasons_fp": result.classification_result.reasons_fp,
+            }
+        
+        if result.forecast_bundle:
+            response["forecast_bundle"] = {
+                "enabled": result.forecast_bundle.enabled,
+                "bucket_minutes": result.forecast_bundle.bucket_minutes,
+            }
+        
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

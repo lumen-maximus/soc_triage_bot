@@ -30,6 +30,7 @@ from .models.signal import (
     VulnerabilityContext,
 )
 from .services import EnrichmentService, TriageService
+from .services.forecasting import MultiTrackHistoricalData, TrackTimeSeries
 
 # =============================================================================
 # BANNER & UI/UX UTILITIES
@@ -478,15 +479,52 @@ def validate(signal_file: str):
 
 
 async def execute_triage(signal: Signal, historical_data, forecast_enabled: bool = True):
-    """Execute triage asynchronously.
+    """Execute triage asynchronously using the extended multi-track triage.
 
     Args:
         signal: Normalized signal to triage
-        historical_data: Optional historical data for forecasting
+        historical_data: Optional multi-track historical data for forecasting
         forecast_enabled: Whether to run ETS forecasting
     """
     triage_service = setup_triage_service()
-    result = await triage_service.triage(signal, historical_data, forecast_enabled=forecast_enabled)
+    
+    # Convert legacy historical_data to MultiTrackHistoricalData if needed
+    multi_track_data = None
+    if historical_data is not None:
+        if isinstance(historical_data, MultiTrackHistoricalData):
+            multi_track_data = historical_data
+        elif isinstance(historical_data, list) and historical_data:
+            # Convert legacy list format to MultiTrackHistoricalData
+            # Create a basic Track A series from the list
+            values = [d.get("count", 0) for d in historical_data]
+            timestamps_raw = [d.get("timestamp") for d in historical_data]
+            from datetime import datetime
+            timestamps = []
+            for ts in timestamps_raw:
+                if isinstance(ts, datetime):
+                    timestamps.append(ts)
+                elif isinstance(ts, str):
+                    try:
+                        timestamps.append(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+                    except ValueError:
+                        timestamps.append(datetime.utcnow())
+                else:
+                    timestamps.append(datetime.utcnow())
+            
+            track_a = TrackTimeSeries(
+                track_name="rule",
+                entity_key="rule_id",
+                entity_value=signal.source.rule_id or "unknown",
+                metric_name="alert_count",
+                timestamps=timestamps,
+                values=values,
+                bucket_minutes=15,
+            )
+            multi_track_data = MultiTrackHistoricalData(track_a=track_a)
+    
+    result = await triage_service.triage_extended(
+        signal, multi_track_data, forecast_enabled=forecast_enabled
+    )
     return result
 
 
@@ -876,9 +914,4 @@ def format_result_as_json(result):
 
 if __name__ == "__main__":
     main()
-        "timestamp": result.timestamp.isoformat()
-    }
 
-
-if __name__ == "__main__":
-    main()

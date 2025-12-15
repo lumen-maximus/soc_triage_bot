@@ -445,38 +445,6 @@ class SimilarityService:
 
         return None
 
-    # =========================================================================
-    # LEGACY METHODS (for backward compatibility)
-    # =========================================================================
-
-    def find_similar(
-        self, signal: Signal, top_k: int = 5, min_similarity: float = 0.3
-    ) -> List[Tuple[str, float]]:
-        """Legacy find_similar returning (case_id, similarity) tuples.
-
-        DEPRECATED: Use find_similar_extended() for new code.
-        """
-        if not self.case_database or self.case_vectors is None:
-            return []
-
-        try:
-            signal_text = self._signal_to_text(signal)
-            signal_vector = self.vectorizer.transform([signal_text])
-            similarities = cosine_similarity(signal_vector, self.case_vectors)[0]
-
-            similar_indices = np.argsort(similarities)[::-1][:top_k]
-
-            results = []
-            for idx in similar_indices:
-                similarity = similarities[idx]
-                if similarity >= min_similarity:
-                    case_id = self.case_database[idx].get("case_id", f"case-{idx}")
-                    results.append((case_id, float(similarity)))
-
-            return results
-        except Exception:
-            return []
-
     def add_case(self, case: Dict[str, Any]):
         """Add a new case to the database."""
         self.case_database.append(case)
