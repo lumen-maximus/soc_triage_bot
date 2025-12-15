@@ -402,6 +402,25 @@ class SimilarCase(BaseModel):
     )
     notes_summary: str = Field(default="", description="Summary of case notes")
 
+    # --- Similarity matching fields (from SimilarityService) ---
+    similarity: float = Field(
+        default=0.0,
+        description="Combined similarity score (0-1) from text and entity matching",
+    )
+    signal_type: str = Field(
+        default="", description="Signal type of the historical case"
+    )
+    title: str = Field(default="", description="Title of the historical case")
+    outcome: str = Field(
+        default="unknown",
+        description="Resolution outcome: 'TP', 'FP', or 'unknown'",
+    )
+    matched_entities: List[str] = Field(
+        default_factory=list,
+        description="Entities that matched between signal and case (e.g., 'ip:1.2.3.4')",
+    )
+    notes: str = Field(default="", description="Case notes or summary")
+
     # --- CaseArtifactHarvester fields ---
     runbook_refs: List[RunbookRef] = Field(
         default_factory=list,
@@ -541,6 +560,8 @@ class ThreatIntelEntry(BaseModel):
 class HostContext(BaseModel):
     """Host asset context from CMDB."""
 
+    hostname: str = Field(default="", description="Hostname/device name")
+    os: str = Field(default="", description="Operating system")
     criticality: str = Field(default="", description="Asset criticality")
     business_unit: str = Field(default="", description="Business unit")
     owner: str = Field(default="", description="Asset owner")
@@ -552,8 +573,10 @@ class HostContext(BaseModel):
 class UserContext(BaseModel):
     """User context from identity systems."""
 
+    username: str = Field(default="", description="Username")
     role: str = Field(default="", description="User role")
     department: str = Field(default="", description="User department")
+    risk_score: Optional[float] = Field(None, description="User risk score (0-1)")
 
 
 class AssetContext(BaseModel):

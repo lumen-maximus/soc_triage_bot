@@ -126,6 +126,8 @@ class TriageService:
             )
 
         # Step 3: Similar case retrieval (entity-based)
+        # NOTE: SimilarCase models include runbook_refs, attachments_metadata
+        # from SOAR. This is the SINGLE source - no re-fetching later.
         similar_cases_models = self.similarity_service.find_similar_as_models(signal)
         similar_cases_tuples = [
             (c.case_id, c.similarity, c.outcome) for c in similar_cases_models
@@ -140,10 +142,13 @@ class TriageService:
         )
 
         # Step 5: Action proposals -> Recommendations
+        # Pass similar_cases_models for case-learned and case-linked actions
         actions = self.action_proposal_service.propose_actions(
             signal=signal,
             classification=self._classification_result_to_legacy(classification_result),
             enrichments=enrichments,
+            similar_cases=similar_cases_tuples,
+            similar_cases_models=similar_cases_models,
         )
         recommendations = self._actions_to_recommendations(actions)
 
@@ -315,7 +320,7 @@ class TriageService:
                 owner_team=a.metadata.get("owner", "SOC") if a.metadata else "SOC",
                 auto_executable=a.metadata.get("auto", False) if a.metadata else False,
                 status="Open",
-                rationale=a.rationale if hasattr(a, "rationale") else "",
+                rationale=a.rationale if a.rationale else a.reasoning,
             )
             for a in actions
         ]

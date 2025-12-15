@@ -1,0 +1,26 @@
+{
+  "signal_id": "DEMO-2024-001",
+  "signal_type": "siem_alert",
+  "timestamp": "2025-12-15T04:54:47.570092+00:00",
+  "classification": {
+    "disposition": "TRUE_POSITIVE",
+    "tp_likelihood": 0.87,
+    "severity": "high",
+    "confidence": "high"
+  },
+  "forecast": {
+    "enabled": true,
+    "bucket_minutes": 60,
+    "tracks": {
+      "rule": "SPIKE - 5.2x above expected. Anomalous activity detected.",
+      "ioc": "ELEVATED - 2.8x above baseline. New indicator emerging.",
+      "entity": "SPIKE - 4.1x above expected. Entity anomaly detected."
+    }
+  },
+  "similar_cases_count": 3,
+  "recommendations_count": 7,
+  "ai_overlay": {
+    "model_version": "GPT-4o (2024-12-14)",
+    "tp_fp_likelihood": "likely_tp"
+  }
+}
