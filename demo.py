@@ -83,37 +83,39 @@ from soc_triage_bot.models.triage_report import (
 )
 from soc_triage_bot.services.report import ReportService
 
-
 # =============================================================================
 # BANNER & UI UTILITIES
 # =============================================================================
 
+
 # ANSI color codes
 class Colors:
     """ANSI color codes for terminal output."""
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    UNDERLINE = '\033[4m'
-    RESET = '\033[0m'
+
+    HEADER = "\033[95m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    UNDERLINE = "\033[4m"
+    RESET = "\033[0m"
 
     # Gradient-like colors
-    PURPLE = '\033[38;5;135m'
-    MAGENTA = '\033[38;5;199m'
-    ORANGE = '\033[38;5;208m'
-    TEAL = '\033[38;5;43m'
-    WHITE = '\033[97m'
+    PURPLE = "\033[38;5;135m"
+    MAGENTA = "\033[38;5;199m"
+    ORANGE = "\033[38;5;208m"
+    TEAL = "\033[38;5;43m"
+    WHITE = "\033[97m"
 
 
 def supports_color() -> bool:
     """Check if terminal supports color output."""
     import sys
-    if not hasattr(sys.stdout, 'isatty'):
+
+    if not hasattr(sys.stdout, "isatty"):
         return False
     if not sys.stdout.isatty():
         return False
@@ -139,16 +141,36 @@ def show_banner(subtitle: str = "", show_version: bool = True):
     # Clean, compact ASCII art banner
     print("")
     print(f"  {c('╭─────────────────────────────────────────────╮', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}   {c('███████╗ ██████╗  ██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}   {c('██╔════╝██╔═══██╗██╔════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}   {c('███████╗██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}   {c('╚════██║██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}   {c('███████║╚██████╔╝╚██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}   {c('╚══════╝ ╚═════╝  ╚═════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}     {c('A G E N T', Colors.MAGENTA + Colors.BOLD)}                           {c('│', Colors.CYAN)}")
-    print(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
+    print(
+        f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}   {c('███████╗ ██████╗  ██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}   {c('██╔════╝██╔═══██╗██╔════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}   {c('███████╗██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}   {c('╚════██║██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}   {c('███████║╚██████╔╝╚██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}   {c('╚══════╝ ╚═════╝  ╚═════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}     {c('A G E N T', Colors.MAGENTA + Colors.BOLD)}                           {c('│', Colors.CYAN)}"
+    )
+    print(
+        f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}"
+    )
     print(f"  {c('╰─────────────────────────────────────────────╯', Colors.CYAN)}")
 
     # Tagline
@@ -156,7 +178,9 @@ def show_banner(subtitle: str = "", show_version: bool = True):
     print(f"\n    {c(tagline, Colors.WHITE + Colors.BOLD)}")
 
     if show_version:
-        print(f"    {c(f'Version {version}', Colors.DIM)} | {c('SIEM-Agnostic • Async • AI-Ready', Colors.DIM)}")
+        print(
+            f"    {c(f'Version {version}', Colors.DIM)} | {c('SIEM-Agnostic • Async • AI-Ready', Colors.DIM)}"
+        )
 
     if subtitle:
         print(f"\n    {c('▸', Colors.TEAL)} {c(subtitle, Colors.WHITE)}")
@@ -993,6 +1017,24 @@ def create_ai_overlay(signal: Signal) -> AIOverlay:
                 },
             ),
         ],
+        # §3 Context Interpretation (NEW)
+        context_interpretation=(
+            "Signal contains high-quality structured data from Splunk SIEM alert. "
+            "Primary entity (WORKSTATION-042) is clearly identified with associated user (jsmith). "
+            "All three indicator types (IP, domain, hash) are present and correlated. "
+            "CVEs extracted from vulnerability context are directly relevant to the attack chain."
+        ),
+        entity_extraction_confidence=(
+            "HIGH: All entities extracted from structured fields. "
+            "Hostname, username, and IP addresses verified against CMDB. "
+            "No ambiguity in entity relationships."
+        ),
+        indicator_context=[
+            "Domain suspicious-domain.com is a known Cobalt Strike C2 server (first seen 5 days ago)",
+            "IP 10.0.0.5 is part of APT29 infrastructure (confirmed by 3 TI sources)",
+            "Hash abc123... matches Cobalt Strike loader with process injection capability",
+            "Process powershell.exe with encoded command is common initial execution technique",
+        ],
         scope_interpretation=(
             "Current evidence suggests limited scope (3 hosts), but lateral movement timeline indicates "
             "attacker had 6 hours of access. SMB connections to additional hosts not yet fully investigated."
@@ -1126,6 +1168,31 @@ def create_ai_overlay(signal: Signal) -> AIOverlay:
                 ),
             ),
         ],
+        # §11 Closure Guidance (NEW)
+        closure_guidance=(
+            "Based on signal context and similar case analysis, this signal should be closed as TRUE POSITIVE "
+            "if any of the following are confirmed: (1) C2 communication is verified active, (2) credential "
+            "dumping artifacts are found, or (3) lateral movement is confirmed. Close as FALSE POSITIVE only "
+            "if jsmith confirms intentional security testing with documented approval."
+        ),
+        tp_verification_steps=[
+            "Verify C2 beacon traffic in proxy/firewall logs (domain: suspicious-domain.com, IP: 10.0.0.5)",
+            "Check for lsass.exe memory access events on WORKSTATION-042 in EDR",
+            "Confirm RDP session to SERVER-DC01 was not authorized maintenance",
+            "Review jsmith's recent phishing simulation participation (rule out authorized testing)",
+            "Validate Cobalt Strike hash is not from approved red team engagement",
+        ],
+        fp_verification_steps=[
+            "Obtain written confirmation from jsmith that encoded PowerShell was intentional",
+            "Verify security testing approval ticket exists for this timeframe",
+            "Confirm suspicious-domain.com is a legitimate security research domain (unlikely)",
+            "Check if WORKSTATION-042 is an approved penetration testing workstation",
+        ],
+        similar_case_closure_patterns=[
+            "CASE-2024-0892: Closed as TP after confirming C2 traffic + credential dump (72h to remediate)",
+            "CASE-2024-0756: Closed as TP after lateral movement confirmed (24h to contain)",
+            "CASE-2024-0634: Closed as FP after developer confirmed legitimate build script usage",
+        ],
         business_impact_summary=(
             "**CRITICAL BUSINESS RISK**\n\n"
             "A developer workstation with access to source code and internal systems has been compromised. "
@@ -1160,7 +1227,7 @@ async def run_demo():
     """Execute the full triage demo with all sections populated."""
     # Display the SOC Agent banner
     show_banner(subtitle="Full Pipeline Demo (All 13 Sections)")
-    
+
     print(f"  {c('▸', Colors.TEAL)} {c('Demo Execution', Colors.BOLD + Colors.WHITE)}")
     print(c("─" * 60, Colors.DIM))
 

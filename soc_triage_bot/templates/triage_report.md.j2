@@ -18,6 +18,7 @@ AI OVERLAY SECTION MAPPING:
   Banner      -> tp_fp_likelihood, tp_fp_rationale, model_version
   §1 Summary  -> executive_summary_statements
   §2 Actions  -> next_checks
+  §3 Context  -> context_interpretation, entity_extraction_confidence, indicator_context
   §4 Scope    -> scope_interpretation, correlation_insights
   §5 TI       -> tp_fp_evidence_citations, enrichment_interpretation
   §6 Exposure -> exposure_interpretation, exploit_likelihood_assessment
@@ -25,6 +26,7 @@ AI OVERLAY SECTION MAPPING:
   §8 Timeline -> timeline_narrative, attack_chain_hypothesis
   §9 Assess   -> scorecard_explanation, hypotheses, decision_checklist
   §10 Similar -> similar_case_narratives
+  §11 Closure -> closure_guidance, tp_verification_steps, fp_verification_steps, similar_case_closure_patterns
   §12 Stakeh. -> business_impact_summary, risk_communication
   §13 DataQual-> data_quality_observations, confidence_caveats
 
@@ -208,6 +210,25 @@ DECISION BANNER (single source of truth)
 - **CVEs:** {{ r.ctx.cves | join(", ") }}
 {% else -%}
 - **CVEs:** none
+{% endif %}
+
+{% if ai_overlay and (ai_overlay.context_interpretation or ai_overlay.entity_extraction_confidence or ai_overlay.indicator_context) -%}
+### 🤖 AI Context Interpretation
+
+{% if ai_overlay.entity_extraction_confidence -%}
+**Extraction Confidence:** {{ ai_overlay.entity_extraction_confidence }}
+{% endif %}
+
+{% if ai_overlay.context_interpretation -%}
+{{ ai_overlay.context_interpretation }}
+{% endif %}
+
+{% if ai_overlay.indicator_context and ai_overlay.indicator_context|length > 0 -%}
+**Indicator Context:**
+{% for ctx in ai_overlay.indicator_context -%}
+- {{ ctx }}
+{% endfor %}
+{% endif %}
 {% endif %}
 
 {# ============================================================================
@@ -883,6 +904,35 @@ Track selection guidance per signal type:
 {% endif %}
 
 **Runbook reference:** {{ r.classification.runbook_ref if r.classification.runbook_ref else "RB-GEN-001 Generic Signal Triage" }}
+
+{% if ai_overlay and (ai_overlay.closure_guidance or ai_overlay.tp_verification_steps or ai_overlay.fp_verification_steps or ai_overlay.similar_case_closure_patterns) -%}
+### 🤖 AI Closure Guidance
+
+{% if ai_overlay.closure_guidance -%}
+{{ ai_overlay.closure_guidance }}
+{% endif %}
+
+{% if ai_overlay.tp_verification_steps and ai_overlay.tp_verification_steps|length > 0 -%}
+**To Confirm TRUE POSITIVE:**
+{% for step in ai_overlay.tp_verification_steps -%}
+- [ ] {{ step }}
+{% endfor %}
+{% endif %}
+
+{% if ai_overlay.fp_verification_steps and ai_overlay.fp_verification_steps|length > 0 -%}
+**To Confirm FALSE POSITIVE:**
+{% for step in ai_overlay.fp_verification_steps -%}
+- [ ] {{ step }}
+{% endfor %}
+{% endif %}
+
+{% if ai_overlay.similar_case_closure_patterns and ai_overlay.similar_case_closure_patterns|length > 0 -%}
+**Similar Case Closure Patterns:**
+{% for pattern in ai_overlay.similar_case_closure_patterns -%}
+- {{ pattern }}
+{% endfor %}
+{% endif %}
+{% endif %}
 
 {# ============================================================================
 12) STAKEHOLDER SNAPSHOT (answers: exec-level "so what?" without deep details)

@@ -153,6 +153,7 @@ class AIOverlay(BaseModel):
         Banner          -> tp_fp_likelihood, tp_fp_rationale
         §1  Summary     -> executive_summary_statements
         §2  Action Plan -> next_checks
+        §3  Context     -> context_interpretation, entity_extraction_confidence, indicator_context
         §4  Correlation -> scope_interpretation, correlation_insights
         §5  Threat Intel-> enrichment_interpretation, tp_fp_evidence_citations
         §6  Exposure    -> exposure_interpretation, exploit_likelihood_assessment
@@ -160,6 +161,7 @@ class AIOverlay(BaseModel):
         §8  Timeline    -> timeline_narrative, attack_chain_hypothesis
         §9  Assessment  -> scorecard_explanation, hypotheses, decision_checklist
         §10 Similar     -> similar_case_narratives
+        §11 Closure     -> closure_guidance, tp_verification_steps, fp_verification_steps, similar_case_closure_patterns
         §12 Stakeholder -> business_impact_summary, risk_communication
         §13 Data Quality-> data_quality_observations, confidence_caveats
 
@@ -197,6 +199,22 @@ class AIOverlay(BaseModel):
     next_checks: List[AINextCheck] = Field(
         default_factory=list,
         description="Parameterized query templates for §2 Action Plan",
+    )
+
+    # =========================================================================
+    # §3 NORMALIZED SIGNAL CONTEXT - Entity Extraction & Interpretation
+    # =========================================================================
+    context_interpretation: str = Field(
+        default="",
+        description="AI interpretation of the extracted entities, indicators, and CVEs for §3",
+    )
+    entity_extraction_confidence: str = Field(
+        default="",
+        description="AI assessment of confidence in entity extraction (e.g., 'HIGH: All entities clearly identified from structured fields')",
+    )
+    indicator_context: List[str] = Field(
+        default_factory=list,
+        description="AI context for each indicator (e.g., 'Domain suspicious-domain.com is a known C2 server')",
     )
 
     # =========================================================================
@@ -300,6 +318,26 @@ class AIOverlay(BaseModel):
     similar_case_narratives: List[AISimilarCaseNarrative] = Field(
         default_factory=list,
         description="Top 3 similar cases with AI-generated comparison narratives for §10",
+    )
+
+    # =========================================================================
+    # §11 CLOSURE CRITERIA - Context-Specific Guidance
+    # =========================================================================
+    closure_guidance: str = Field(
+        default="",
+        description="AI-generated context-specific closure guidance based on signal details for §11",
+    )
+    tp_verification_steps: List[str] = Field(
+        default_factory=list,
+        description="Specific steps to verify TRUE POSITIVE based on this signal's context for §11",
+    )
+    fp_verification_steps: List[str] = Field(
+        default_factory=list,
+        description="Specific steps to verify FALSE POSITIVE based on this signal's context for §11",
+    )
+    similar_case_closure_patterns: List[str] = Field(
+        default_factory=list,
+        description="Closure patterns observed in similar cases for §11",
     )
 
     # =========================================================================
