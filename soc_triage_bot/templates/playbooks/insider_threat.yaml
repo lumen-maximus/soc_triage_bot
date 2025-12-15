@@ -1,0 +1,168 @@
+# Governed Playbook: Insider Threat Investigation
+# Version: 1.0
+# Author: Insider Threat Team
+# Classification: Confidential
+
+metadata:
+  id: PB-002-INSIDER-THREAT
+  version: '1.0'
+  title: 'Insider Threat Investigation Playbook'
+  description: 'Playbook for investigating potential insider threat activity'
+  category: investigation
+  signal_types:
+    - SIEM_ALERT
+    - USER_REPORT
+    - HUNT_FINDING
+  severity_levels:
+    - medium
+    - high
+    - critical
+  author: insider-threat-team
+  approved_by: ciso
+  approval_date: '2024-12-01'
+  review_cycle_days: 60
+  legal_review_required: true
+
+conditions:
+  classification:
+    - TRUE_POSITIVE
+    - UNKNOWN
+  min_confidence: 0.5
+  required_entities:
+    - user
+
+phases:
+  - phase: INITIAL_ASSESSMENT
+    description: 'Gather context and assess threat level'
+    actions:
+      - id: assess-1
+        intent: INVESTIGATE
+        tool: HR Systems
+        owner: Insider Threat Team
+        title: 'Review HR Context'
+        description: 'Gather HR context for user {user}'
+        steps:
+          - 'Check employee status (active, terminated, notice period)'
+          - 'Review recent performance issues'
+          - 'Check for planned departures'
+          - 'Review access level and data exposure'
+        priority: 1
+        estimated_effort: '15 minutes'
+        automation_available: false
+        risk_tier: LOW
+        legal_hold: true
+
+      - id: assess-2
+        intent: INVESTIGATE
+        tool: SIEM
+        owner: SOC
+        title: 'Baseline User Activity'
+        description: 'Establish normal activity baseline for {user}'
+        steps:
+          - 'Query 30-day login patterns'
+          - 'Identify typical work hours'
+          - 'Document normal data access patterns'
+          - 'Note typical application usage'
+        priority: 1
+        estimated_effort: '20 minutes'
+        automation_available: true
+        risk_tier: LOW
+
+  - phase: DATA_COLLECTION
+    description: 'Collect evidence without alerting subject'
+    actions:
+      - id: collect-1
+        intent: INVESTIGATE
+        tool: DLP
+        owner: DLP Team
+        title: 'Review DLP Alerts'
+        description: 'Review all DLP alerts for {user}'
+        steps:
+          - 'Query DLP for user alerts (last 90 days)'
+          - 'Categorize by data classification'
+          - 'Identify patterns of exfiltration attempts'
+          - 'Document volume and frequency'
+        priority: 1
+        estimated_effort: '25 minutes'
+        automation_available: true
+        risk_tier: LOW
+        legal_hold: true
+
+      - id: collect-2
+        intent: INVESTIGATE
+        tool: EDR
+        owner: SOC
+        title: 'Endpoint Analysis'
+        description: "Analyze endpoint activity for {user}'s devices"
+        steps:
+          - 'Review USB device connections'
+          - 'Check for unauthorized software'
+          - 'Analyze file access patterns'
+          - 'Review browser history'
+          - 'Check cloud storage sync activity'
+        priority: 1
+        estimated_effort: '30 minutes'
+        automation_available: true
+        risk_tier: MEDIUM
+        legal_hold: true
+
+      - id: collect-3
+        intent: INVESTIGATE
+        tool: Cloud Security
+        owner: Cloud Team
+        title: 'Cloud Activity Review'
+        description: 'Review cloud service activity for {user}'
+        steps:
+          - 'Check SaaS app logins'
+          - 'Review file sharing activity'
+          - 'Check for external sharing'
+          - 'Review API access patterns'
+        priority: 2
+        estimated_effort: '20 minutes'
+        automation_available: true
+        risk_tier: LOW
+        legal_hold: true
+
+  - phase: RESPONSE
+    description: 'Take appropriate action based on findings'
+    actions:
+      - id: respond-1
+        intent: CONTAIN
+        tool: IAM
+        owner: IT
+        title: 'Revoke Access'
+        description: 'Revoke user access pending investigation'
+        steps:
+          - 'Coordinate with HR and Legal'
+          - 'Disable user account'
+          - 'Revoke VPN access'
+          - 'Disable badge access'
+          - 'Collect company devices'
+        priority: 1
+        estimated_effort: '30 minutes'
+        automation_available: false
+        risk_tier: HIGH
+        approval_required: true
+        approvers:
+          - HR Director
+          - Legal
+          - CISO
+
+      - id: respond-2
+        intent: NOTIFY
+        tool: Legal
+        owner: Legal
+        title: 'Legal Notification'
+        description: 'Brief legal team on findings'
+        steps:
+          - 'Prepare evidence summary'
+          - 'Brief legal counsel'
+          - 'Discuss preservation requirements'
+          - 'Determine law enforcement involvement'
+        priority: 2
+        estimated_effort: '60 minutes'
+        automation_available: false
+        risk_tier: LOW
+        approval_required: true
+        approvers:
+          - General Counsel

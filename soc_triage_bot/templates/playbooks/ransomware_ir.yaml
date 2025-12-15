@@ -1,0 +1,222 @@
+# Governed Playbook: Ransomware Incident Response
+# Version: 1.0
+# Author: Incident Response Team
+# Classification: Confidential
+
+metadata:
+  id: PB-001-RANSOMWARE
+  version: '1.0'
+  title: 'Ransomware Incident Response Playbook'
+  description: 'Complete playbook for ransomware incident response'
+  category: incident_response
+  signal_types:
+    - SIEM_ALERT
+    - EDR_DETECTION
+    - USER_REPORT
+  severity_levels:
+    - critical
+  author: incident-response
+  approved_by: ciso
+  approval_date: '2024-12-01'
+  review_cycle_days: 30
+  environment_specific: false
+
+conditions:
+  classification:
+    - TRUE_POSITIVE
+  min_confidence: 0.8
+  required_entities:
+    - hostname
+  keywords:
+    - ransomware
+    - encrypt
+    - ransom
+
+phases:
+  - phase: IDENTIFY
+    description: 'Identify scope and nature of ransomware'
+    actions:
+      - id: identify-1
+        intent: INVESTIGATE
+        tool: EDR
+        owner: IR
+        title: 'Identify Ransomware Variant'
+        description: 'Determine ransomware family and TTPs'
+        steps:
+          - 'Collect ransom note sample'
+          - 'Extract file extension pattern'
+          - 'Query TI for ransomware family'
+          - 'Review known decryption options'
+        priority: 1
+        estimated_effort: '15 minutes'
+        automation_available: true
+        risk_tier: LOW
+
+      - id: identify-2
+        intent: INVESTIGATE
+        tool: SIEM
+        owner: IR
+        title: 'Determine Patient Zero'
+        description: 'Identify initial infection vector'
+        steps:
+          - 'Review email gateway logs'
+          - 'Check proxy logs for malicious downloads'
+          - 'Analyze EDR timeline for first execution'
+          - 'Identify lateral movement timeline'
+        priority: 1
+        estimated_effort: '30 minutes'
+        automation_available: false
+        risk_tier: LOW
+
+  - phase: CONTAIN
+    description: 'Stop ransomware spread'
+    actions:
+      - id: contain-1
+        intent: CONTAIN
+        tool: Network
+        owner: IT
+        title: 'Network Segmentation'
+        description: 'Isolate affected network segments'
+        steps:
+          - 'Identify affected VLANs/subnets'
+          - 'Implement emergency ACLs'
+          - 'Block SMB between segments'
+          - 'Disable remote access temporarily'
+        priority: 1
+        estimated_effort: '30 minutes'
+        automation_available: false
+        risk_tier: CRITICAL
+        approval_required: true
+        approvers:
+          - CISO
+          - IT Director
+
+      - id: contain-2
+        intent: CONTAIN
+        tool: EDR
+        owner: SOC
+        title: 'Mass Host Isolation'
+        description: 'Isolate all affected and at-risk hosts'
+        steps:
+          - 'Create list of affected hosts'
+          - 'Identify hosts with lateral movement indicators'
+          - 'Execute bulk isolation via EDR'
+          - 'Verify isolation for each host'
+        priority: 1
+        estimated_effort: '20 minutes'
+        automation_available: true
+        risk_tier: CRITICAL
+        approval_required: true
+        approvers:
+          - IR Lead
+          - SOC Manager
+
+      - id: contain-3
+        intent: CONTAIN
+        tool: IAM
+        owner: IT
+        title: 'Disable Compromised Accounts'
+        description: 'Disable all potentially compromised accounts'
+        steps:
+          - 'Identify accounts with activity on affected hosts'
+          - 'Disable accounts in AD'
+          - 'Revoke all active sessions'
+          - 'Reset service account credentials'
+        priority: 1
+        estimated_effort: '15 minutes'
+        automation_available: true
+        risk_tier: HIGH
+        approval_required: true
+        approvers:
+          - IR Lead
+
+  - phase: ERADICATE
+    description: 'Remove ransomware artifacts'
+    actions:
+      - id: eradicate-1
+        intent: REMEDIATE
+        tool: EDR
+        owner: IR
+        title: 'Remove Ransomware Artifacts'
+        description: 'Clean all ransomware components from systems'
+        steps:
+          - 'Terminate all ransomware processes'
+          - 'Remove persistence mechanisms'
+          - 'Delete ransomware executables'
+          - 'Clean registry modifications'
+        priority: 2
+        estimated_effort: '60 minutes'
+        automation_available: true
+        risk_tier: MEDIUM
+
+      - id: eradicate-2
+        intent: REMEDIATE
+        tool: IT
+        owner: IT
+        title: 'Rebuild Critically Affected Systems'
+        description: 'Reimage systems that cannot be cleaned'
+        steps:
+          - 'Identify systems requiring rebuild'
+          - 'Backup any recoverable data'
+          - 'Reimage from known-good baseline'
+          - 'Restore from clean backups'
+        priority: 2
+        estimated_effort: '240 minutes'
+        automation_available: false
+        risk_tier: HIGH
+
+  - phase: RECOVER
+    description: 'Restore operations'
+    actions:
+      - id: recover-1
+        intent: REMEDIATE
+        tool: Backup
+        owner: IT
+        title: 'Restore from Backups'
+        description: 'Restore encrypted data from clean backups'
+        steps:
+          - 'Verify backup integrity'
+          - 'Confirm backup predates infection'
+          - 'Restore to isolated environment'
+          - 'Scan restored data for malware'
+          - 'Move to production after verification'
+        priority: 2
+        estimated_effort: '480 minutes'
+        automation_available: false
+        risk_tier: MEDIUM
+
+      - id: recover-2
+        intent: MONITOR
+        tool: SIEM
+        owner: SOC
+        title: 'Enhanced Monitoring'
+        description: 'Implement enhanced monitoring for recurrence'
+        steps:
+          - 'Deploy additional detection rules'
+          - 'Enable verbose logging'
+          - 'Monitor for IoCs for 30 days'
+          - 'Daily review of anomalies'
+        priority: 3
+        estimated_effort: '30 minutes'
+        automation_available: true
+        risk_tier: LOW
+
+  - phase: LESSONS_LEARNED
+    description: 'Post-incident review'
+    actions:
+      - id: lessons-1
+        intent: NOTIFY
+        tool: Documentation
+        owner: IR
+        title: 'Incident Report'
+        description: 'Prepare comprehensive incident report'
+        steps:
+          - 'Document timeline of events'
+          - 'Record all actions taken'
+          - 'Calculate business impact'
+          - 'Prepare executive summary'
+          - 'Schedule lessons learned meeting'
+        priority: 4
+        estimated_effort: '120 minutes'
+        automation_available: false
+        risk_tier: LOW

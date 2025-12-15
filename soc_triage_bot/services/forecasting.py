@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..config import get_forecast_config, get_signal_type_config
 from ..models import Signal
 from ..models.triage_report import (
     ForecastBacktest,
@@ -29,7 +30,6 @@ from ..models.triage_report import (
     ForecastSeriesMeta,
     ForecastTrack,
     ForecastTracks,
-    get_track_config,
 )
 
 
@@ -87,34 +87,165 @@ class ForecastingService:
     - Section 5: Quality gates for reliability (MASE, coverage, missing_pct)
     - Section 6: Spike threshold calibration from backtest residuals
     - Section 8: Policy gates for triage influence
+
+    Now fully integrated with forecasting_entity_map.yaml configuration.
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize forecasting service.
 
         Args:
-            config: Configuration including thresholds and parameters
+            config: Configuration including thresholds and parameters (overrides YAML)
         """
+        # Load YAML configuration
+        yaml_config = get_forecast_config()
+
         self.config = config or {}
         self.threshold = self.config.get("threshold", 0.8)
-        self.bucket_minutes = self.config.get("bucket_minutes", 15)  # Spec default
+        self.bucket_minutes = self.config.get(
+            "bucket_minutes", yaml_config.bucket_minutes_default
+        )
+        self.horizons_hours = self.config.get(
+            "horizons_hours", yaml_config.horizons_hours
+        )
         self.min_history_points = self.config.get("min_history_points", 24)
         self.backtest_window_days = self.config.get("backtest_window_days", 14)
         self.backtest_splits = self.config.get("backtest_splits", 5)
         self.alpha = self.config.get("alpha", 0.3)  # ETS smoothing parameter
+        self.history_window_days = yaml_config.history_window_days_default
+        self.late_arrival_window_minutes = yaml_config.late_arrival_window_minutes
 
-        # Quality gate thresholds (spec Section 5)
-        self.mase_medium_threshold = self.config.get("mase_medium_threshold", 1.3)
-        self.mase_high_threshold = self.config.get("mase_high_threshold", 1.1)
-        self.coverage_high_min = self.config.get("coverage_high_min", 0.85)
-        self.coverage_high_max = self.config.get("coverage_high_max", 0.98)
-        self.missing_pct_medium_max = self.config.get("missing_pct_medium_max", 0.05)
-        self.missing_pct_high_max = self.config.get("missing_pct_high_max", 0.02)
+        # Quality gate thresholds from YAML (spec Section 5)
+        quality_gates = yaml_config.selection_rules.quality_gates
+        medium_gate = quality_gates.get("MEDIUM")
+        high_gate = quality_gates.get("HIGH")
 
-        # Minimum history requirements (spec Section 2)
-        self.min_history_days_rule = self.config.get("min_history_days_rule", 28)
-        self.min_history_days_ioc = self.config.get("min_history_days_ioc", 14)
-        self.min_history_days_entity = self.config.get("min_history_days_entity", 28)
+        self.mase_medium_threshold = (
+            medium_gate.mase_h6_max
+            if medium_gate
+            else self.config.get("mase_medium_threshold", 1.3)
+        )
+        self.mase_high_threshold = (
+            high_gate.mase_h6_max
+            if high_gate
+            else self.config.get("mase_high_threshold", 1.1)
+        )
+        self.coverage_high_min = (
+            high_gate.coverage95_min
+            if high_gate
+            else self.config.get("coverage_high_min", 0.85)
+        )
+        self.coverage_high_max = (
+            high_gate.coverage95_max
+            if high_gate
+            else self.config.get("coverage_high_max", 0.98)
+        )
+        self.missing_pct_medium_max = (
+            medium_gate.missing_pct_max
+            if medium_gate
+            else self.config.get("missing_pct_medium_max", 0.05)
+        )
+        self.missing_pct_high_max = (
+            high_gate.missing_pct_max
+            if high_gate
+            else self.config.get("missing_pct_high_max", 0.02)
+        )
+
+        # Minimum history requirements from YAML default tracks
+        default_tracks = yaml_config.tracks
+        rule_track = default_tracks.get("A_detection_rule")
+        ioc_track = default_tracks.get("B_indicator_artifact")
+        entity_track = default_tracks.get("C_entity_behavior")
+
+        self.min_history_days_rule = (
+            rule_track.reliability_min_history_days if rule_track else 28
+        )
+        self.min_history_days_ioc = (
+            ioc_track.reliability_min_history_days if ioc_track else 14
+        )
+        self.min_history_days_entity = (
+            entity_track.reliability_min_history_days if entity_track else 28
+        )
+
+        # Store common entities for key extraction
+        self.common_entities = yaml_config.common_entities
+
+        # Store selection rules for reliability gating
+        self.selection_rules = yaml_config.selection_rules
+
+    def get_entity_keys_for_track(
+        self, signal_type: str, track: str, signal_subtype: Optional[str] = None
+    ) -> Tuple[List[str], List[str], List[str]]:
+        """Get entity keys and metrics for a track from YAML config.
+
+        Uses the forecasting_entity_map.yaml to determine which entity keys
+        and metrics to use for each track based on signal type.
+
+        Args:
+            signal_type: Signal type (e.g., 'SIEM_ALERT', 'IOC')
+            track: Track name ('A_detection_rule', 'B_indicator_artifact', 'C_entity_behavior')
+            signal_subtype: Optional subtype for metric selection (e.g., 'auth', 'network')
+
+        Returns:
+            Tuple of (keys_preferred, fallbacks, metrics_preferred)
+        """
+        st_config = get_signal_type_config(signal_type)
+
+        if track == "A_detection_rule":
+            track_cfg = st_config.track_a
+        elif track == "B_indicator_artifact":
+            track_cfg = st_config.track_b
+        else:
+            track_cfg = st_config.track_c
+
+        keys_preferred = track_cfg.keys_preferred
+        fallbacks = track_cfg.fallbacks
+        metrics = track_cfg.metrics_preferred
+
+        # Use subtype-specific metrics if available
+        if signal_subtype:
+            if (
+                track_cfg.subtype_metric_map
+                and signal_subtype in track_cfg.subtype_metric_map
+            ):
+                metrics = track_cfg.subtype_metric_map[signal_subtype]
+            elif (
+                track_cfg.complaint_metric_map
+                and signal_subtype in track_cfg.complaint_metric_map
+            ):
+                metrics = track_cfg.complaint_metric_map[signal_subtype]
+
+        return keys_preferred, fallbacks, metrics
+
+    def extract_entity_from_signal(
+        self, signal: Signal, track: str
+    ) -> Optional[Tuple[str, str]]:
+        """Extract primary entity key:value for a track from signal.
+
+        Uses the priority order from forecasting_entity_map.yaml to find
+        the best available entity key in the signal.
+
+        Args:
+            signal: The signal to extract entity from
+            track: Track name
+
+        Returns:
+            Tuple of (entity_key, entity_value) or None if not found
+        """
+        keys_preferred, fallbacks, _ = self.get_entity_keys_for_track(
+            signal.signal_type.value, track
+        )
+
+        all_keys = keys_preferred + fallbacks
+
+        # Check signal entities for matching keys
+        for key in all_keys:
+            if key in signal.entities and signal.entities[key]:
+                values = signal.entities[key]
+                value = values[0] if isinstance(values, list) else values
+                return (key, value)
+
+        return None
 
     def forecast_multi_track(
         self,
@@ -130,14 +261,16 @@ class ForecastingService:
         Returns:
             ForecastBundle with all three tracks populated
         """
-        # Get track config for this signal type
-        track_config = get_track_config(signal.signal_type.value)
+        # Get track config for this signal type from YAML
+        st_config = get_signal_type_config(signal.signal_type.value)
 
         tracks = ForecastTracks(
-            rule=self._forecast_track(historical_data.track_a, "rule", track_config),
-            ioc=self._forecast_track(historical_data.track_b, "ioc", track_config),
+            rule=self._forecast_track(
+                historical_data.track_a, "rule", st_config.track_a
+            ),
+            ioc=self._forecast_track(historical_data.track_b, "ioc", st_config.track_b),
             entity=self._forecast_track(
-                historical_data.track_c, "entity", track_config
+                historical_data.track_c, "entity", st_config.track_c
             ),
         )
 

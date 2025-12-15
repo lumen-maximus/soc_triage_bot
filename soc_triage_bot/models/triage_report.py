@@ -341,8 +341,50 @@ class ClassificationResult(BaseModel):
 # =============================================================================
 
 
+class RunbookRef(BaseModel):
+    """Reference to a runbook/playbook from SOAR or local registry."""
+
+    ref_id: str = Field(..., description="Runbook/playbook ID or reference")
+    ref_type: str = Field(
+        default="runbook",
+        description="Type: runbook, playbook, kb_article, workflow",
+    )
+    source: str = Field(
+        default="soar",
+        description="Source: soar, local, wiki, confluence",
+    )
+    title: Optional[str] = Field(None, description="Human-readable title if known")
+    url: Optional[str] = Field(None, description="URL to wiki/KB article if available")
+    whitelisted: bool = Field(
+        default=False,
+        description="If True, treat as authoritative (same as governed templates)",
+    )
+
+
+class AttachmentMetadata(BaseModel):
+    """Metadata about case attachments (without fetching content)."""
+
+    attachment_id: str = Field(..., description="Attachment ID in SOAR")
+    filename: str = Field(..., description="Original filename")
+    content_type: str = Field(
+        default="application/octet-stream", description="MIME type"
+    )
+    size_bytes: Optional[int] = Field(None, description="File size in bytes")
+    uploaded_at: Optional[str] = Field(None, description="Upload timestamp (ISO)")
+    is_playbook: bool = Field(
+        default=False,
+        description="True if attachment appears to be a playbook/runbook (e.g., .yaml, .md)",
+    )
+
+
 class SimilarCase(BaseModel):
-    """Structured similar case from SOAR/historical data."""
+    """Structured similar case from SOAR/historical data.
+
+    Extended for CaseArtifactHarvester capability:
+    - runbook_refs: References to runbooks/playbooks used in case
+    - tasks_template_id: SOAR workflow/task template ID
+    - attachments_metadata: Metadata about case attachments
+    """
 
     case_id: str = Field(..., description="Historical case ID")
     created_at_utc: Optional[str] = Field(
@@ -359,6 +401,20 @@ class SimilarCase(BaseModel):
         default_factory=list, description="Key actions taken on the case"
     )
     notes_summary: str = Field(default="", description="Summary of case notes")
+
+    # --- CaseArtifactHarvester fields ---
+    runbook_refs: List[RunbookRef] = Field(
+        default_factory=list,
+        description="References to runbooks/playbooks followed in this case",
+    )
+    tasks_template_id: Optional[str] = Field(
+        None,
+        description="SOAR workflow/task template ID used for this case",
+    )
+    attachments_metadata: List[AttachmentMetadata] = Field(
+        default_factory=list,
+        description="Metadata about case attachments (PDFs, MDs, etc.)",
+    )
 
 
 # =============================================================================

@@ -1,0 +1,126 @@
+# Governed Runbook: IOC Hunting
+# Version: 1.0
+# Author: Security Engineering
+# Last Updated: 2024-12-01
+
+metadata:
+  id: RB-003-IOC-HUNT
+  version: '1.0'
+  title: 'IOC Hunting Runbook'
+  description: 'Standard procedure for hunting and containing Indicators of Compromise'
+  category: investigation
+  signal_types:
+    - IOC
+    - HUNT_FINDING
+  severity_levels:
+    - low
+    - medium
+    - high
+  author: security-engineering
+  approved_by: soc-lead
+  approval_date: '2024-12-01'
+  review_cycle_days: 60
+
+conditions:
+  classification:
+    - TRUE_POSITIVE
+    - UNKNOWN
+  min_confidence: 0.4
+
+actions:
+  - id: step-1-enrich
+    intent: INVESTIGATE
+    tool: TI Platform
+    owner: SOC
+    title: 'Enrich IOC'
+    description: 'Gather context about {indicator_value} from TI sources'
+    steps:
+      - 'Query internal TI platform'
+      - 'Check commercial TI feeds'
+      - 'Review open source intelligence'
+      - 'Document threat actor associations'
+    priority: 1
+    estimated_effort: '10 minutes'
+    automation_available: true
+    risk_tier: LOW
+
+  - id: step-2-historical-search
+    intent: INVESTIGATE
+    tool: SIEM
+    owner: SOC
+    title: 'Historical IOC Search'
+    description: 'Search for historical sightings of {indicator_value}'
+    steps:
+      - 'Query SIEM for IOC matches (last 90 days)'
+      - 'Query EDR for process/network activity'
+      - 'Query proxy/DNS logs'
+      - 'Document timeline of sightings'
+    priority: 1
+    estimated_effort: '15 minutes'
+    automation_available: true
+    risk_tier: LOW
+
+  - id: step-3-scope-impact
+    intent: INVESTIGATE
+    tool: SIEM
+    owner: SOC
+    title: 'Assess Impact Scope'
+    description: 'Identify all affected hosts and users'
+    steps:
+      - 'List all hosts with IOC activity'
+      - 'Identify associated users'
+      - 'Determine data access during exposure'
+      - 'Categorize by asset criticality'
+    priority: 2
+    estimated_effort: '20 minutes'
+    automation_available: false
+    risk_tier: LOW
+
+  - id: step-4-block
+    intent: CONTAIN
+    tool: Security Controls
+    owner: SOC
+    title: 'Block IOC Enterprise-Wide'
+    description: 'Add {indicator_type} to blocking controls'
+    steps:
+      - 'Add IP to firewall blocklist'
+      - 'Add domain to DNS sinkhole'
+      - 'Add hash to EDR blocklist'
+      - 'Add URL to proxy blocklist'
+      - 'Verify blocks are active'
+    priority: 1
+    estimated_effort: '10 minutes'
+    automation_available: true
+    risk_tier: MEDIUM
+
+  - id: step-5-create-detection
+    intent: MONITOR
+    tool: SIEM
+    owner: Detection Engineering
+    title: 'Create Detection Rule'
+    description: 'Create alerting for future IOC sightings'
+    steps:
+      - 'Draft detection logic'
+      - 'Test in staging environment'
+      - 'Deploy to production'
+      - 'Set appropriate severity'
+    priority: 3
+    estimated_effort: '30 minutes'
+    automation_available: false
+    risk_tier: LOW
+
+  - id: step-6-share-intel
+    intent: NOTIFY
+    tool: TI Platform
+    owner: TI Team
+    title: 'Share Intelligence'
+    description: 'Share IOC and context with intel community'
+    steps:
+      - 'Prepare IOC report'
+      - 'Share with ISACs if appropriate'
+      - 'Update internal TI platform'
+      - 'Brief stakeholders'
+    priority: 3
+    estimated_effort: '20 minutes'
+    automation_available: false
+    risk_tier: LOW

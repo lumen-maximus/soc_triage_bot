@@ -1,5 +1,5 @@
 {# ============================================================================
-SOC TRIAGE REPORT (Enterprise Template v2)
+SOC TRIAGE REPORT (Enterprise Template v2.1)
 
 PURPOSE: Triage packet for SOC analysts + minimal stakeholder clarity.
 GOALS:
@@ -13,6 +13,20 @@ NON-REDUNDANCY RULE: Each section answers a distinct question; avoid repeating f
 AI OVERLAY: When ai_overlay is provided, AI insights are interwoven into relevant
 sections. AI statements cite evidence IDs where traceable, or are labeled as
 HYPOTHESIS/ASSUMPTION when not.
+
+AI OVERLAY SECTION MAPPING:
+  Banner      -> tp_fp_likelihood, tp_fp_rationale, model_version
+  §1 Summary  -> executive_summary_statements
+  §2 Actions  -> next_checks
+  §4 Scope    -> scope_interpretation, correlation_insights
+  §5 TI       -> tp_fp_evidence_citations, enrichment_interpretation
+  §6 Exposure -> exposure_interpretation, exploit_likelihood_assessment
+  §7 Trend    -> trend_interpretation, trend_concerns, track_interpretations
+  §8 Timeline -> timeline_narrative, attack_chain_hypothesis
+  §9 Assess   -> scorecard_explanation, hypotheses, decision_checklist
+  §10 Similar -> similar_case_narratives
+  §12 Stakeh. -> business_impact_summary, risk_communication
+  §13 DataQual-> data_quality_observations, confidence_caveats
 
 DATA STRUCTURE: This template expects `r` (TriageReport) as the top-level object:
   r.signal     - Normalized signal
@@ -226,6 +240,21 @@ DECISION BANNER (single source of truth)
   {% endif %}
 - **Spread assessment:** {{ r.enrich.scope.spread_assessment if r.enrich.scope and r.enrich.scope.spread_assessment else "N/A" }}
 
+{% if ai_overlay and (ai_overlay.scope_interpretation or ai_overlay.correlation_insights) -%}
+### 🤖 AI Scope & Correlation Insights
+
+{% if ai_overlay.scope_interpretation -%}
+{{ ai_overlay.scope_interpretation }}
+{% endif %}
+
+{% if ai_overlay.correlation_insights and ai_overlay.correlation_insights|length > 0 -%}
+**Correlation Insights:**
+{% for insight in ai_overlay.correlation_insights -%}
+- {{ insight }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
 {# ============================================================================
 5) THREAT INTEL (answers: what does intel say about indicators?)
 ============================================================================ #}
@@ -304,6 +333,18 @@ DECISION BANNER (single source of truth)
 - **Exposure summary:** {{ env.summary if env.summary else "N/A" }}
 {% if env.sample_assets and env.sample_assets|length > 0 -%}
 - **Sample affected assets:** {{ env.sample_assets | join(", ") }}
+{% endif %}
+
+{% if ai_overlay and (ai_overlay.exposure_interpretation or ai_overlay.exploit_likelihood_assessment) -%}
+### 🤖 AI Exposure Assessment
+
+{% if ai_overlay.exposure_interpretation -%}
+{{ ai_overlay.exposure_interpretation }}
+{% endif %}
+
+{% if ai_overlay.exploit_likelihood_assessment -%}
+**Exploit Likelihood:** {{ ai_overlay.exploit_likelihood_assessment }}
+{% endif %}
 {% endif %}
 
 {# ============================================================================
@@ -603,6 +644,20 @@ Track selection guidance per signal type:
 
 > **Timeline interpretation:** {{ r.enrich.timeline_interpretation if r.enrich.timeline_interpretation else ("Timeline contains correlated activity; review events above." if r.enrich.related_events and r.enrich.related_events|length > 0 else "No correlated timeline events available.") }}
 
+{% if ai_overlay and (ai_overlay.timeline_narrative or ai_overlay.attack_chain_hypothesis) -%}
+### 🤖 AI Timeline Analysis
+
+{% if ai_overlay.timeline_narrative -%}
+{{ ai_overlay.timeline_narrative }}
+{% endif %}
+
+{% if ai_overlay.attack_chain_hypothesis -%}
+**Attack Chain Hypothesis:** ⚠️ *[HYPOTHESIS - requires verification]*
+
+{{ ai_overlay.attack_chain_hypothesis }}
+{% endif %}
+{% endif %}
+
 {# ============================================================================
 9) TRIAGE ASSESSMENT (answers: why we decided this)
 ============================================================================ #}
@@ -784,6 +839,20 @@ Track selection guidance per signal type:
 - **Potential impact:** {{ exec.potential_impact if exec.potential_impact else "Potential compromise / malicious activity; impact depends on criticality and scope." }}
 - **External/customer impact:** {{ exec.external_impact if exec.external_impact else "N/A" }}
 - **Compliance notes:** {{ exec.compliance_notes if exec.compliance_notes else (host_ctx.compliance if host_ctx.compliance else "N/A") }}
+
+{% if ai_overlay and (ai_overlay.business_impact_summary or ai_overlay.risk_communication) -%}
+### 🤖 AI Business Impact Summary
+
+{% if ai_overlay.business_impact_summary -%}
+{{ ai_overlay.business_impact_summary }}
+{% endif %}
+
+{% if ai_overlay.risk_communication -%}
+**Risk Communication (Non-Technical):**
+
+{{ ai_overlay.risk_communication }}
+{% endif %}
+{% endif %}
 
 {# ============================================================================
 13) DATA QUALITY / GAPS (answers: what's missing so we don't overclaim)

@@ -198,11 +198,12 @@ class TriageService:
             id=signal.signal_id,
             type=signal.signal_type.value.upper(),
             source=signal.source.system,
-            timestamp=signal.timestamp.isoformat() if signal.timestamp else "",
-            title=signal.title,
-            description=signal.description,
-            severity=signal.severity,
-            raw_indicators=signal.indicators,
+            name=signal.title,
+            category=signal.description[:50] if signal.description else "",
+            timestamp_utc=(
+                signal.timestamp.isoformat() + "Z" if signal.timestamp else ""
+            ),
+            raw=signal.raw_data if signal.raw_data else {},
         )
 
         # Build SignalContext
@@ -239,10 +240,9 @@ class TriageService:
 
         # Build ReportMeta
         report_meta = ReportMeta(
-            generated_at=datetime.now(timezone.utc).isoformat(),
-            triage_started_at=start_time.isoformat(),
-            version="2.0.0",
-            analyst_tier="Tier 1",
+            generated_utc=datetime.now(timezone.utc).isoformat() + "Z",
+            triage_owner="Automated",
+            tool_version="2.0.0",
         )
 
         return TriageReport(
@@ -430,10 +430,12 @@ class TriageService:
             id=signal.signal_id,
             type=signal.signal_type.value.upper(),
             source=signal.source.system,
-            timestamp=signal.timestamp.isoformat() if signal.timestamp else "",
-            title=signal.title,
-            description=signal.description,
-            severity=signal.severity,
+            name=signal.title,
+            category=signal.description[:50] if signal.description else "",
+            timestamp_utc=(
+                signal.timestamp.isoformat() + "Z" if signal.timestamp else ""
+            ),
+            raw=signal.raw_data if signal.raw_data else {},
         )
 
         # Convert legacy classification to ClassificationResult

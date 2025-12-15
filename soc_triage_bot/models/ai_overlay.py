@@ -6,15 +6,18 @@ It provides human-readable summaries, explanations, and suggestions - but does N
 replace the underlying deterministic scoring logic.
 
 SECTION MAPPING (AI overlays are interwoven into these sections):
+    Banner              -> tp_fp_likelihood, tp_fp_rationale, model_version
     §1  Summary         -> executive_summary_statements
     §2  Action Plan     -> next_checks
+    §4  Correlation     -> scope_interpretation, correlation_insights
     §5  Threat Intel    -> enrichment_interpretation, tp_fp_evidence_citations
+    §6  Exposure        -> exposure_interpretation, exploit_likelihood_assessment
     §7  Trend/Forecast  -> trend_interpretation, trend_concerns, track_interpretations
+    §8  Timeline        -> timeline_narrative, attack_chain_hypothesis
     §9  Triage Assess   -> scorecard_explanation, hypotheses, decision_checklist
     §10 Similar Cases   -> similar_case_narratives
+    §12 Stakeholder     -> business_impact_summary, risk_communication
     §13 Data Quality    -> data_quality_observations, confidence_caveats
-
-    Banner              -> tp_fp_likelihood, tp_fp_rationale
 
 GUARDRAILS:
     1. Every LLM statement must be traceable to an Evidence ID (log line, query result,
@@ -150,10 +153,14 @@ class AIOverlay(BaseModel):
         Banner          -> tp_fp_likelihood, tp_fp_rationale
         §1  Summary     -> executive_summary_statements
         §2  Action Plan -> next_checks
+        §4  Correlation -> scope_interpretation, correlation_insights
         §5  Threat Intel-> enrichment_interpretation, tp_fp_evidence_citations
+        §6  Exposure    -> exposure_interpretation, exploit_likelihood_assessment
         §7  Trend       -> trend_interpretation, trend_concerns, track_interpretations
+        §8  Timeline    -> timeline_narrative, attack_chain_hypothesis
         §9  Assessment  -> scorecard_explanation, hypotheses, decision_checklist
         §10 Similar     -> similar_case_narratives
+        §12 Stakeholder -> business_impact_summary, risk_communication
         §13 Data Quality-> data_quality_observations, confidence_caveats
 
     GUARDRAILS (enforced by structure):
@@ -193,6 +200,18 @@ class AIOverlay(BaseModel):
     )
 
     # =========================================================================
+    # §4 CORRELATION & SCOPE - Spread/Impact Interpretation
+    # =========================================================================
+    scope_interpretation: str = Field(
+        default="",
+        description="AI interpretation of the scope and spread assessment for §4",
+    )
+    correlation_insights: List[str] = Field(
+        default_factory=list,
+        description="AI insights connecting sightings and correlations for §4",
+    )
+
+    # =========================================================================
     # §5 THREAT INTEL - Evidence Citations & Enrichment Interpretation
     # =========================================================================
     tp_fp_evidence_citations: List[str] = Field(
@@ -202,6 +221,18 @@ class AIOverlay(BaseModel):
     enrichment_interpretation: str = Field(
         default="",
         description="AI interpretation of enrichment results for §5 Threat Intel",
+    )
+
+    # =========================================================================
+    # §6 EXPOSURE & VULNERABILITY - Risk Assessment
+    # =========================================================================
+    exposure_interpretation: str = Field(
+        default="",
+        description="AI interpretation of exposure and vulnerability context for §6",
+    )
+    exploit_likelihood_assessment: str = Field(
+        default="",
+        description="AI assessment of exploitation likelihood based on context for §6",
     )
 
     # =========================================================================
@@ -218,6 +249,18 @@ class AIOverlay(BaseModel):
     track_interpretations: List[AITrackInterpretation] = Field(
         default_factory=list,
         description="Per-track (rule/ioc/entity) AI interpretations for §7",
+    )
+
+    # =========================================================================
+    # §8 EVIDENCE TIMELINE - Attack Chain Narrative
+    # =========================================================================
+    timeline_narrative: str = Field(
+        default="",
+        description="AI narrative connecting timeline events into a coherent story for §8",
+    )
+    attack_chain_hypothesis: str = Field(
+        default="",
+        description="AI hypothesis about the attack chain/progression for §8 (labeled as hypothesis)",
     )
 
     # =========================================================================
@@ -246,6 +289,18 @@ class AIOverlay(BaseModel):
     similar_case_narratives: List[AISimilarCaseNarrative] = Field(
         default_factory=list,
         description="Top 3 similar cases with AI-generated comparison narratives for §10",
+    )
+
+    # =========================================================================
+    # §12 STAKEHOLDER SNAPSHOT - Business Impact
+    # =========================================================================
+    business_impact_summary: str = Field(
+        default="",
+        description="AI-generated plain-language business impact summary for executives in §12",
+    )
+    risk_communication: str = Field(
+        default="",
+        description="AI risk explanation in non-technical language for stakeholders in §12",
     )
 
     # =========================================================================

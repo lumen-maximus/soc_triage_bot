@@ -1,0 +1,127 @@
+# Governed Runbook: Phishing Response
+# Version: 1.0
+# Author: Security Engineering
+# Last Updated: 2024-12-01
+
+metadata:
+  id: RB-002-PHISHING
+  version: '1.0'
+  title: 'Phishing Response Runbook'
+  description: 'Standard operating procedure for responding to phishing alerts'
+  category: investigation
+  signal_types:
+    - EMAIL_SECURITY_ALERT
+    - USER_REPORT
+  severity_levels:
+    - medium
+    - high
+  author: security-engineering
+  approved_by: ciso
+  approval_date: '2024-12-01'
+  review_cycle_days: 90
+
+conditions:
+  classification:
+    - TRUE_POSITIVE
+    - UNKNOWN
+  min_confidence: 0.5
+  required_entities: []
+
+actions:
+  - id: step-1-analyze
+    intent: INVESTIGATE
+    tool: Email Security
+    owner: SOC
+    title: 'Analyze Phishing Email'
+    description: 'Examine email headers, content, and attachments'
+    steps:
+      - 'Review email headers for spoofing indicators'
+      - 'Extract and analyze URLs in safe environment'
+      - 'Submit attachments to sandbox for analysis'
+      - 'Check sender reputation in TI'
+    priority: 1
+    estimated_effort: '15 minutes'
+    automation_available: true
+    risk_tier: LOW
+
+  - id: step-2-quarantine
+    intent: CONTAIN
+    tool: Email Security
+    owner: SOC
+    title: 'Quarantine Phishing Emails'
+    description: 'Remove phishing email from all mailboxes'
+    steps:
+      - 'Search for email by Message-ID in all mailboxes'
+      - 'Quarantine all copies'
+      - 'Document affected users'
+    priority: 1
+    estimated_effort: '10 minutes'
+    automation_available: true
+    risk_tier: LOW
+
+  - id: step-3-block-sender
+    intent: CONTAIN
+    tool: Email Security
+    owner: SOC
+    title: 'Block Sender/Domain'
+    description: 'Add malicious sender to blocklist'
+    steps:
+      - 'Verify domain is not a legitimate service'
+      - 'Add sender address to blocklist'
+      - 'Consider domain-wide block if appropriate'
+      - 'Update spam filter rules'
+    priority: 2
+    estimated_effort: '5 minutes'
+    automation_available: true
+    risk_tier: MEDIUM
+
+  - id: step-4-check-clicks
+    intent: INVESTIGATE
+    tool: SIEM
+    owner: SOC
+    title: 'Identify Users Who Clicked'
+    description: 'Find users who may have interacted with phishing content'
+    steps:
+      - 'Query proxy logs for URL visits'
+      - 'Check email tracking data for link clicks'
+      - 'Identify credential submission attempts'
+      - 'Create list of affected users'
+    priority: 1
+    estimated_effort: '15 minutes'
+    automation_available: true
+    risk_tier: LOW
+
+  - id: step-5-credential-reset
+    intent: REMEDIATE
+    tool: IAM
+    owner: IT
+    title: 'Force Password Reset'
+    description: 'Reset passwords for users who submitted credentials'
+    steps:
+      - 'Notify affected users'
+      - 'Force password reset via IAM'
+      - 'Revoke active sessions'
+      - 'Enable MFA if not already active'
+    priority: 1
+    estimated_effort: '20 minutes'
+    automation_available: true
+    risk_tier: MEDIUM
+    approval_required: true
+    approvers:
+      - SOC Lead
+
+  - id: step-6-notify-users
+    intent: NOTIFY
+    tool: Email
+    owner: SOC
+    title: 'Security Awareness Notification'
+    description: 'Send awareness notification to all recipients'
+    steps:
+      - 'Draft security awareness message'
+      - 'Include indicators to watch for'
+      - 'Send to all original recipients'
+      - 'Track acknowledgments'
+    priority: 3
+    estimated_effort: '10 minutes'
+    automation_available: true
+    risk_tier: LOW
