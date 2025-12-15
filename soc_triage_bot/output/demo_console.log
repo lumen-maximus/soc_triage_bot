@@ -1,0 +1,343 @@
+
+  ╭─────────────────────────────────────────────╮
+  │                                             │
+  │   ███████╗ ██████╗  ██████╗               │
+  │   ██╔════╝██╔═══██╗██╔════╝               │
+  │   ███████╗██║   ██║██║                    │
+  │   ╚════██║██║   ██║██║                    │
+  │   ███████║╚██████╔╝╚██████╗               │
+  │   ╚══════╝ ╚═════╝  ╚═════╝               │
+  │                                             │
+  │     A G E N T                           │
+  │                                             │
+  ╰─────────────────────────────────────────────╯
+
+    🛡️  Autonomous Security Operations Center
+    Version v1.0.0 | SIEM-Agnostic • Async • AI-Ready
+
+    ▸ Full Pipeline Demo (All Services)
+
+  ▸ Service Pipeline Execution
+──────────────────────────────────────────────────────────────────────
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SOC TRIAGE BOT - SERVICE INVENTORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│
+│ Adapters (Data Sources):
+│   • SIEMAdapter          - SIEM alert ingestion & correlation
+│   • ThreatIntelAdapter   - VirusTotal, OTX, AbuseIPDB
+│   • CMDBAdapter          - Asset context & ownership
+│   • EDRAdapter           - Endpoint telemetry
+│   • VulnerabilityAdapter - CVE/vulnerability data
+│
+│ Core Services:
+│   • TriageService        - Main orchestrator
+│   • EnrichmentService    - Multi-source enrichment
+│   • ClassificationService - TP/FP scoring engine
+│   • ForecastingService   - Multi-track ETS analysis
+│   • SimilarityService    - Vector search for cases
+│   • CaseArtifactHarvester - Extract SOAR artifacts
+│   • ActionProposalService - Generate recommendations
+│   • RunbookRegistry      - Match playbooks/runbooks
+│   • AIService            - LLM overlay generation
+│   • ReportService        - Jinja2 markdown render
+│
+└─ 10 services ready
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 1: SIGNAL INGESTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: adapters/SIEMAdapter
+│ Ingesting raw alert from Splunk...
+│
+│ Signal Parsed:
+│   • ID: DEMO-2024-001
+│   • Type: SIEM_ALERT
+│   • Source: Splunk
+│   • Rule: Suspicious PowerShell Encoded Command
+│   • Severity: HIGH
+│
+└─ ✓ SIEMAdapter.ingest() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 2: ENRICHMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/EnrichmentService
+│ Orchestrating multi-source enrichment...
+│
+│ → ThreatIntelAdapter.lookup()
+│   IP 10.0.0.5: MALICIOUS (VT 48/92, AbuseIPDB 100%)
+│   Domain: MALICIOUS (DGA pattern, 5d old)
+│   Hash: MALICIOUS (Cobalt Strike, 42/72)
+│
+│ → CMDBAdapter.get_asset_context()
+│   Host: WORKSTATION-042 | Owner: jsmith | Criticality: MEDIUM
+│
+│ → VulnerabilityAdapter.get_host_vulns()
+│   CVE-2024-1234: AMSI Bypass (HIGH, exploited)
+│   CVE-2023-9876: Print Spooler (MEDIUM)
+│
+│ → EDRAdapter.get_telemetry()
+│   Process: explorer.exe → powershell.exe -enc ...
+│   lsass.exe access detected (Mimikatz pattern)
+│
+│ → SIEMAdapter.correlate()
+│   47 DNS queries to C2 domain (last 24h)
+│   3 hosts involved in lateral movement
+│
+└─ ✓ EnrichmentService.enrich() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 3: FORECASTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/ForecastingService
+│ Running multi-track ETS models...
+│
+│ → ForecastingService.forecast_track() Track A (Rule)
+│   Model: ETS(A,Ad,N) | Status: 🔴 SPIKE 5.2x
+│ → ForecastingService.forecast_track() Track B (IOC)
+│   Model: ETS(A,N,N) | Status: 🟠 ELEVATED 2.8x
+│ → ForecastingService.forecast_track() Track C (Entity)
+│   Model: ETS(A,Ad,A) | Status: 🔴 SPIKE 4.1x
+│
+│ Cross-Track: Triple-spike (95% TP correlation)
+└─ ✓ ForecastingService.run_all_tracks() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 4: SIMILAR CASE RETRIEVAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/SimilarityService
+│ Vector search over historical cases...
+│
+│ → SimilarityService.find_similar()
+│   CASE-2024-0892: 92% match (TP, same C2)
+│   CASE-2024-0756: 78% match (TP, Cobalt Strike)
+│   CASE-2024-0634: 65% match (FP, dev tool)
+│
+└─ ✓ SimilarityService.find_similar() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 5: CLASSIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/ClassificationService
+│ Computing TP/FP likelihood from enrichments + forecast + similar cases...
+│
+│ → ClassificationService.classify_extended()
+│   Inputs: enrichments, similar_cases, forecast_bundle
+│   TI Score: +35% | Pattern: +25%
+│   ETS: +15% | Similar: +12% | FP: -13%
+│
+│   ┌──────────────────────────────────┐
+│   │  TRUE POSITIVE @ 87% likelihood │
+│   │  Severity: HIGH | Confidence: HIGH │
+│   └──────────────────────────────────┘
+│
+└─ ✓ ClassificationService.classify_extended() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 6: SOAR ARTIFACT HARVESTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/CaseArtifactHarvester
+│ Extracting proven actions from similar TP cases...
+│
+│ → CaseArtifactHarvester.harvest() CASE-2024-0892
+│   Extracted: EDR isolation, credential reset, IOC blocking
+│ → CaseArtifactHarvester.harvest() CASE-2024-0756
+│   Extracted: Network containment, forensic imaging
+│
+└─ ✓ CaseArtifactHarvester.harvest_all() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 7: ACTION PROPOSAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/ActionProposalService
+│ Generating prioritized recommendations based on classification...
+│
+│ Sources (by precedence):
+│   1. seeded      → Governed runbooks/playbooks (YAML)
+│   2. case_linked → SOAR archive (proven org intelligence)
+│   3. learned    → Pattern-matched from similar cases
+│   4. contextual → Dynamic from enrichments
+│   5. template   → Fallback signal-type defaults
+│
+│ → ActionProposalService.propose_actions()
+│   Inputs: signal, classification, enrichments, similar_cases
+│
+│   Generated Actions:
+│   P1 [seeded]      Isolate WORKSTATION-042 via EDR
+│   P1 [case_linked] Reset jsmith credentials (from CASE-2024-0892)
+│   P2 [contextual]  Block IOCs at perimeter (TI: malicious)
+│   P2 [learned]     Investigate lateral hosts (92% similar case)
+│   P3 [seeded]      Forensic imaging
+│   P4 [template]    Patch CVE-2024-1234
+│
+│   Enterprise Features:
+│   → Dedupe by (intent|tool|owner|target) - 2 duplicates merged
+│   → Gating: FP actions blocked, HIGH risk flagged for approval
+│   → Ranking: source precedence > priority > confidence
+│   → Capping: top 6, full plan max 15
+│
+└─ ✓ ActionProposalService.propose_actions() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 8: RUNBOOK MATCHING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/RunbookRegistry
+│ Matching signal + classification to playbooks/runbooks...
+│
+│ → RunbookRegistry.match()
+│   Matched: malware_containment.yaml (Cobalt Strike)
+│   Matched: phishing_response.yaml (Initial access)
+│   Playbook: ransomware_ir.yaml (Lateral movement)
+│
+└─ ✓ RunbookRegistry.match() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 9: AI OVERLAY GENERATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/AIService
+│ Provider: MockProvider | Model: GPT-4o
+│
+│ → AIService.generate_overlay()
+│   → Decision Banner rationale
+│   → Executive summary (4 statements)
+│   → Next checks (3 queries)
+│   → Action rationale (evidence-backed)
+│   → Action prioritization reasoning
+│   → Additional action suggestions (4)
+│   → Action dependencies (3)
+│   → Action risks (3)
+│   → Evidence citations (E-001..E-005)
+│   → Trend interpretation
+│   → Timeline narrative
+│   → Scorecard explanation
+│   → Similar case narratives
+│   → Closure guidance
+│   → Business impact
+│   → Data quality observations
+│
+│   AI Assessment: LIKELY TRUE POSITIVE
+└─ ✓ AIService.generate_overlay() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STAGE 10: REPORT RENDERING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: services/ReportService
+│ Template: triage_report.md.j2
+│
+│ → ReportService.generate_report()
+│   Rendered: Header + Decision Banner
+│   Rendered: §1-§13 (all sections)
+│   Rendered: Appendix (raw payload)
+│
+│   Output: 833 lines of markdown
+└─ ✓ ReportService.generate_report() complete
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PIPELINE COMPLETE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│
+│ Services Invoked: 10 (in logical order)
+│   1. SIEMAdapter.ingest()              → Signal ingestion
+│   2. EnrichmentService.enrich()        → Context from 5 adapters
+│   3. ForecastingService.run_all_tracks()→ ETS anomaly detection
+│   4. SimilarityService.find_similar()  → Historical case matching
+│   5. ClassificationService.classify()  → TP/FP determination
+│   6. CaseArtifactHarvester.harvest()   → Extract SOAR artifacts
+│   7. ActionProposalService.propose()   → 5-source recommendations
+│      seeded > case_linked > learned > contextual > template
+│   8. RunbookRegistry.match()           → Playbook selection
+│   9. AIService.generate_overlay()      → LLM enhancement
+│  10. ReportService.generate_report()   → Final markdown
+│
+└─ ✓ All services executed successfully
+
+================================================================================
+Demo Complete!
+================================================================================
+
+✓ Markdown report saved to: /mnt/c/Dev/soc_triage_bot/soc_triage_bot/output/demo_report_DEMO-2024-001.md
+✓ JSON summary saved to: /mnt/c/Dev/soc_triage_bot/soc_triage_bot/output/demo_result_DEMO-2024-001.json
+
+--- Report Sections Populated ---
+  ✓ Header: Signal info, timestamps
+  ✓ Decision Banner: TRUE_POSITIVE @ 87% TP likelihood
+  ✓ §1 Summary: SOC + Stakeholder overview
+  ✓ §2 Action Plan: 7 recommendations with AI enhancements:
+      - 3 AI next checks (query templates)
+      - Action rationale (evidence-backed WHY)
+      - Priority reasoning (action ordering)
+      - 4 additional AI suggestions
+      - 3 action dependencies
+      - 3 action risks
+  ✓ §3 Normalized Context: Entities, indicators, CVEs
+  ✓ §4 Correlation & Scope: 3 sightings, 3 hosts impacted
+  ✓ §5 Threat Intelligence: 3 indicators with TI enrichment
+  ✓ §6 Exposure: Asset context, 2 host vulns, env exposure
+  ✓ §7 Trend & Forecast: 3 tracks (Rule/IOC/Entity) with full backtest
+  ✓ §8 Timeline: 6 correlated events + AI attack chain
+  ✓ §9 Assessment: 6 TP drivers, 3 FP drivers, MITRE mapping
+  ✓ §10 Similar Cases: 3 cases with SOAR artifacts + AI narratives
+  ✓ §11 Closure Criteria: TP/FP decision guidance
+  ✓ §12 Stakeholder Snapshot: Executive summary
+  ✓ §13 Data Quality: 3 data gaps, 3 assumptions
+  ✓ Appendix: Raw signal payload
+
+================================================================================
+REPORT PREVIEW (first 50 lines)
+================================================================================
+
+
+
+# SOC Triage Report – DEMO-2024-001
+
+**Signal Type:** SIEM_ALERT
+**Signal Source:** Splunk
+**Signal Name:** PowerShell with Base64 Encoded Command Detected
+**Category:** Execution / Defense Evasion
+**Signal Time (UTC):** 2025-12-15T19:54:45.239564+00:00Z
+**Generated (UTC):** 2025-12-15T19:54:46.041610+00:00Z
+**Triage Owner:** Analyst Team Alpha
+**Tool Version:** 2.0.0
+**AI Model:** GPT-4o (2024-12-14)
+
+
+
+---
+
+## Decision Banner
+
+
+> **Triage Decision:** **TRUE_POSITIVE**
+> **Severity (if TP):** **high**
+> **TP Likelihood:** **87.0%**
+> **Confidence:** high
+> **🤖 AI Assessment:** **LIKELY TP**
+
+
+**Top Rationale (one-line):**
+- IP 10.0.0.5 flagged malicious by 3 TI sources (VirusTotal, AbuseIPDB, OTX)
+
+**🤖 AI Rationale:** Multi-source TI correlation (3/3 indicators malicious), Cobalt Strike signature match, and timeline consistency with known attack chain strongly support TRUE POSITIVE disposition. Developer context is the only FP driver, but does not explain C2 communication or Mimikatz activity.
+
+
+
+**Immediate Next Steps (P1/P2)**
+1. IMMEDIATE: Isolate WORKSTATION-042 via EDR network containment
+2. IMMEDIATE: Reset credentials for jsmith and admin_svc accounts
+
+
+---
+
+## 1. Summary (SOC + Stakeholders)
+
+
+> PowerShell with Base64 Encoded Command Detected (SIEM_ALERT) triaged as **high** with **87.0%** TP likelihood; spread=limited.
+
+- **What we started with:** SIEM_ALERT from Splunk.
+- **What correlation showed:** Alert correlates with 3 TI hits, 2 prior sightings of IOC, and 1 confirmed similar case. Scope appears limited to single host but lateral movement indicators present.
+
+... [truncated - see full report in output file] ...
+
+📄 Full report (833 lines): /mnt/c/Dev/soc_triage_bot/soc_triage_bot/output/demo_report_DEMO-2024-001.md

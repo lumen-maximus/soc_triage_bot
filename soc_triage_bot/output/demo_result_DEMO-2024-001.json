@@ -1,7 +1,7 @@
 {
   "signal_id": "DEMO-2024-001",
   "signal_type": "siem_alert",
-  "timestamp": "2025-12-15T18:59:33.598976+00:00",
+  "timestamp": "2025-12-15T19:54:45.239564+00:00",
   "classification": {
     "disposition": "TRUE_POSITIVE",
     "tp_likelihood": 0.87,
@@ -21,6 +21,12 @@
   "recommendations_count": 7,
   "ai_overlay": {
     "model_version": "GPT-4o (2024-12-14)",
-    "tp_fp_likelihood": "likely_tp"
+    "tp_fp_likelihood": "likely_tp",
+    "next_checks_count": 3,
+    "action_rationale_length": 373,
+    "action_prioritization_reasoning_length": 309,
+    "additional_action_suggestions_count": 4,
+    "action_dependencies_count": 3,
+    "action_risks_count": 3
   }
 }
