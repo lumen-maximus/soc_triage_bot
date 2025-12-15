@@ -36,31 +36,33 @@ from .services.forecasting import MultiTrackHistoricalData
 # BANNER & UI/UX UTILITIES
 # =============================================================================
 
+
 # ANSI color codes
 class Colors:
     """ANSI color codes for terminal output."""
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    DIM = '\033[2m'
-    UNDERLINE = '\033[4m'
-    RESET = '\033[0m'
+
+    HEADER = "\033[95m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    UNDERLINE = "\033[4m"
+    RESET = "\033[0m"
 
     # Gradient-like colors
-    PURPLE = '\033[38;5;135m'
-    MAGENTA = '\033[38;5;199m'
-    ORANGE = '\033[38;5;208m'
-    TEAL = '\033[38;5;43m'
-    WHITE = '\033[97m'
+    PURPLE = "\033[38;5;135m"
+    MAGENTA = "\033[38;5;199m"
+    ORANGE = "\033[38;5;208m"
+    TEAL = "\033[38;5;43m"
+    WHITE = "\033[97m"
 
 
 def supports_color() -> bool:
     """Check if terminal supports color output."""
-    if not hasattr(sys.stdout, 'isatty'):
+    if not hasattr(sys.stdout, "isatty"):
         return False
     if not sys.stdout.isatty():
         return False
@@ -86,16 +88,36 @@ def show_banner(subtitle: str = "", show_version: bool = True):
     # Clean, compact ASCII art banner
     click.echo("")
     click.echo(f"  {c('╭─────────────────────────────────────────────╮', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}   {c('███████╗ ██████╗  ██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}   {c('██╔════╝██╔═══██╗██╔════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}   {c('███████╗██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}   {c('╚════██║██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}   {c('███████║╚██████╔╝╚██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}   {c('╚══════╝ ╚═════╝  ╚═════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}     {c('A G E N T', Colors.MAGENTA + Colors.BOLD)}                           {c('│', Colors.CYAN)}")
-    click.echo(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
+    click.echo(
+        f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}   {c('███████╗ ██████╗  ██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}   {c('██╔════╝██╔═══██╗██╔════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}   {c('███████╗██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}   {c('╚════██║██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}   {c('███████║╚██████╔╝╚██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}   {c('╚══════╝ ╚═════╝  ╚═════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}     {c('A G E N T', Colors.MAGENTA + Colors.BOLD)}                           {c('│', Colors.CYAN)}"
+    )
+    click.echo(
+        f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}"
+    )
     click.echo(f"  {c('╰─────────────────────────────────────────────╯', Colors.CYAN)}")
 
     # Tagline
@@ -103,7 +125,9 @@ def show_banner(subtitle: str = "", show_version: bool = True):
     click.echo(f"\n    {c(tagline, Colors.WHITE + Colors.BOLD)}")
 
     if show_version:
-        click.echo(f"    {c(f'Version {version}', Colors.DIM)} | {c('SIEM-Agnostic • Async • AI-Ready', Colors.DIM)}")
+        click.echo(
+            f"    {c(f'Version {version}', Colors.DIM)} | {c('SIEM-Agnostic • Async • AI-Ready', Colors.DIM)}"
+        )
 
     if subtitle:
         click.echo(f"\n    {c('▸', Colors.TEAL)} {c(subtitle, Colors.WHITE)}")
@@ -158,6 +182,7 @@ def show_divider():
 # SERVICE SETUP
 # =============================================================================
 
+
 def setup_triage_service():
     """Initialize the triage service."""
     adapters = [
@@ -165,7 +190,7 @@ def setup_triage_service():
         EDRAdapter(),
         ThreatIntelAdapter(),
         VulnerabilityAdapter(),
-        CMDBAdapter()
+        CMDBAdapter(),
     ]
 
     enrichment_service = EnrichmentService(adapters)
@@ -187,10 +212,14 @@ def main(ctx):
         click.echo(c("  Available Commands:", Colors.BOLD))
         click.echo(f"    {c('triage', Colors.CYAN)}    - Triage a security signal")
         click.echo(f"    {c('serve', Colors.CYAN)}     - Start the REST API server")
-        click.echo(f"    {c('create', Colors.CYAN)}    - Create a new signal interactively")
+        click.echo(
+            f"    {c('create', Colors.CYAN)}    - Create a new signal interactively"
+        )
         click.echo(f"    {c('validate', Colors.CYAN)}  - Validate a signal JSON file")
         click.echo(f"    {c('health', Colors.CYAN)}    - Check adapter health status")
-        click.echo(f"\n  {c('Run', Colors.DIM)} {c('soc-agent <command> --help', Colors.WHITE)} {c('for more info', Colors.DIM)}\n")
+        click.echo(
+            f"\n  {c('Run', Colors.DIM)} {c('soc-agent <command> --help', Colors.WHITE)} {c('for more info', Colors.DIM)}\n"
+        )
 
 
 @main.command()
@@ -206,29 +235,47 @@ def serve(host: str, port: int, reload: bool):
     show_section("Server Configuration")
     show_info(f"Host: {c(host, Colors.CYAN)}")
     show_info(f"Port: {c(str(port), Colors.CYAN)}")
-    show_info(f"Auto-reload: {c('enabled', Colors.GREEN) if reload else c('disabled', Colors.DIM)}")
+    show_info(
+        f"Auto-reload: {c('enabled', Colors.GREEN) if reload else c('disabled', Colors.DIM)}"
+    )
 
     show_divider()
-    show_step(1, f"Starting Uvicorn server on {c(f'http://{host}:{port}', Colors.UNDERLINE)}", "running")
-
-    uvicorn.run(
-        "soc_triage_bot.api:app",
-        host=host,
-        port=port,
-        reload=reload
+    show_step(
+        1,
+        f"Starting Uvicorn server on {c(f'http://{host}:{port}', Colors.UNDERLINE)}",
+        "running",
     )
+
+    uvicorn.run("soc_triage_bot.api:app", host=host, port=port, reload=reload)
 
 
 @main.command()
 @click.option("--signal-file", type=click.Path(exists=True), help="Signal JSON file")
-@click.option("--ioc", type=str, help="IOC string (format: type=value, e.g., domain=evil.com)")
+@click.option(
+    "--ioc", type=str, help="IOC string (format: type=value, e.g., domain=evil.com)"
+)
 @click.option("--cve", type=str, help="CVE identifier (e.g., CVE-2024-12345)")
 @click.option("--hunt-id", type=str, help="Hunt finding ID (e.g., HUNT-007)")
-@click.option("--user-report", type=click.Path(exists=True), help="User report text file")
-@click.option("--historical-data", type=click.Path(exists=True), help="Historical data JSON file")
-@click.option("--forecast", type=click.Choice(["on", "off"]), default="on", help="Enable/disable ETS forecasting")
+@click.option(
+    "--user-report", type=click.Path(exists=True), help="User report text file"
+)
+@click.option(
+    "--historical-data", type=click.Path(exists=True), help="Historical data JSON file"
+)
+@click.option(
+    "--forecast",
+    type=click.Choice(["on", "off"]),
+    default="on",
+    help="Enable/disable ETS forecasting",
+)
 @click.option("--output", "-o", type=click.Path(), help="Output file for report")
-@click.option("--format", "-f", type=click.Choice(["markdown", "json"]), default="markdown", help="Output format")
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["markdown", "json"]),
+    default="markdown",
+    help="Output format",
+)
 @click.option("--demo", is_flag=True, help="Run in demo mode with sample data")
 def triage(
     signal_file: Optional[str],
@@ -301,7 +348,9 @@ def triage(
         # Create user report signal from file
         signal = create_signal_from_user_report(user_report)
         input_source = f"report: {Path(user_report).name}"
-        show_info(f"Created signal from user report: {c(Path(user_report).name, Colors.CYAN)}")
+        show_info(
+            f"Created signal from user report: {c(Path(user_report).name, Colors.CYAN)}"
+        )
     else:
         show_error("No input specified!")
         raise click.UsageError(
@@ -312,7 +361,9 @@ def triage(
     if historical_data:
         with open(historical_data) as f:
             hist_data = json.load(f)
-        show_info(f"Loaded historical data from {c(Path(historical_data).name, Colors.CYAN)}")
+        show_info(
+            f"Loaded historical data from {c(Path(historical_data).name, Colors.CYAN)}"
+        )
 
     # Step 1: Normalize signal
     signal = normalize_signal_cli(signal)
@@ -323,15 +374,22 @@ def triage(
     # Show triage details
     show_section("Triage Execution")
     show_info(f"Signal ID: {c(signal.signal_id, Colors.WHITE + Colors.BOLD)}")
+    show_info(f"Input: {c(input_source, Colors.CYAN)}")
     show_info(f"Type: {c(signal.signal_type.value.upper(), Colors.CYAN)}")
-    show_info(f"Severity: {c(signal.severity.upper(), Colors.YELLOW if signal.severity in ['high', 'critical'] else Colors.WHITE)}")
-    show_info(f"Forecast: {c('enabled', Colors.GREEN) if forecast_enabled else c('disabled', Colors.DIM)}")
+    show_info(
+        f"Severity: {c(signal.severity.upper(), Colors.YELLOW if signal.severity in ['high', 'critical'] else Colors.WHITE)}"
+    )
+    show_info(
+        f"Forecast: {c('enabled', Colors.GREEN) if forecast_enabled else c('disabled', Colors.DIM)}"
+    )
 
     show_divider()
 
     # Execute triage with step indicators
     show_step(1, "Running concurrent enrichments...", "running")
-    show_step(2, "Analyzing historical patterns...", "running" if forecast_enabled else "skip")
+    show_step(
+        2, "Analyzing historical patterns...", "running" if forecast_enabled else "skip"
+    )
     show_step(3, "Finding similar cases...", "running")
     show_step(4, "Classifying signal...", "running")
     show_step(5, "Generating recommendations...", "running")
@@ -361,14 +419,25 @@ def triage(
 
 
 @main.command()
-@click.option("--type", "signal_type", type=click.Choice(["siem_alert", "ioc", "cve", "hunt", "user_report"]),
-              default="siem_alert", help="Signal type")
+@click.option(
+    "--type",
+    "signal_type",
+    type=click.Choice(["siem_alert", "ioc", "cve", "hunt", "user_report"]),
+    default="siem_alert",
+    help="Signal type",
+)
 @click.option("--title", prompt=True, help="Signal title")
 @click.option("--description", prompt=True, help="Signal description")
-@click.option("--severity", type=click.Choice(["low", "medium", "high", "critical"]),
-              default="medium", help="Severity level")
+@click.option(
+    "--severity",
+    type=click.Choice(["low", "medium", "high", "critical"]),
+    default="medium",
+    help="Severity level",
+)
 @click.option("--output", "-o", type=click.Path(), help="Output file for report")
-def create(signal_type: str, title: str, description: str, severity: str, output: Optional[str]):
+def create(
+    signal_type: str, title: str, description: str, severity: str, output: Optional[str]
+):
     """Create and triage a new signal interactively."""
     show_banner(subtitle="Interactive Signal Creation")
 
@@ -384,12 +453,14 @@ def create(signal_type: str, title: str, description: str, severity: str, output
         severity=severity,
         entities={},
         tags=[],
-        raw_data={}
+        raw_data={},
     )
 
     show_success(f"Created signal: {c(signal.signal_id, Colors.CYAN)}")
     show_info(f"Type: {c(signal_type.upper(), Colors.WHITE)}")
-    show_info(f"Severity: {c(severity.upper(), Colors.YELLOW if severity in ['high', 'critical'] else Colors.WHITE)}")
+    show_info(
+        f"Severity: {c(severity.upper(), Colors.YELLOW if severity in ['high', 'critical'] else Colors.WHITE)}"
+    )
 
     show_divider()
     show_section("Running Triage")
@@ -418,7 +489,7 @@ def health():
         EDRAdapter(),
         ThreatIntelAdapter(),
         VulnerabilityAdapter(),
-        CMDBAdapter()
+        CMDBAdapter(),
     ]
 
     enrichment_service = EnrichmentService(adapters)
@@ -431,9 +502,13 @@ def health():
     click.echo("")
     for adapter_name, is_healthy in health_status.items():
         if is_healthy:
-            click.echo(f"  {c('●', Colors.GREEN)} {adapter_name}: {c('healthy', Colors.GREEN)}")
+            click.echo(
+                f"  {c('●', Colors.GREEN)} {adapter_name}: {c('healthy', Colors.GREEN)}"
+            )
         else:
-            click.echo(f"  {c('●', Colors.RED)} {adapter_name}: {c('unhealthy', Colors.RED)}")
+            click.echo(
+                f"  {c('●', Colors.RED)} {adapter_name}: {c('unhealthy', Colors.RED)}"
+            )
 
     healthy_count = sum(1 for h in health_status.values() if h)
     total_count = len(health_status)
@@ -461,12 +536,20 @@ def validate(signal_file: str):
         signal = parse_signal_from_json(signal_data)
 
         show_divider()
-        show_success(f"Signal is valid!")
+        show_success("Signal is valid!")
         click.echo("")
-        click.echo(f"  {c('Signal ID:', Colors.DIM)} {c(signal.signal_id, Colors.WHITE)}")
-        click.echo(f"  {c('Type:', Colors.DIM)} {c(signal.signal_type.value.upper(), Colors.CYAN)}")
-        click.echo(f"  {c('Severity:', Colors.DIM)} {c(signal.severity.upper(), Colors.YELLOW if signal.severity in ['high', 'critical'] else Colors.WHITE)}")
-        click.echo(f"  {c('Entities:', Colors.DIM)} {c(str(len(signal.entities)), Colors.WHITE)} types")
+        click.echo(
+            f"  {c('Signal ID:', Colors.DIM)} {c(signal.signal_id, Colors.WHITE)}"
+        )
+        click.echo(
+            f"  {c('Type:', Colors.DIM)} {c(signal.signal_type.value.upper(), Colors.CYAN)}"
+        )
+        click.echo(
+            f"  {c('Severity:', Colors.DIM)} {c(signal.severity.upper(), Colors.YELLOW if signal.severity in ['high', 'critical'] else Colors.WHITE)}"
+        )
+        click.echo(
+            f"  {c('Entities:', Colors.DIM)} {c(str(len(signal.entities)), Colors.WHITE)} types"
+        )
         click.echo("")
     except json.JSONDecodeError as e:
         show_divider()
@@ -478,7 +561,11 @@ def validate(signal_file: str):
         raise click.Abort()
 
 
-async def execute_triage(signal: Signal, historical_data: Optional[MultiTrackHistoricalData] = None, forecast_enabled: bool = True):
+async def execute_triage(
+    signal: Signal,
+    historical_data: Optional[MultiTrackHistoricalData] = None,
+    forecast_enabled: bool = True,
+):
     """Execute triage asynchronously using the extended multi-track triage.
 
     Args:
@@ -487,7 +574,7 @@ async def execute_triage(signal: Signal, historical_data: Optional[MultiTrackHis
         forecast_enabled: Whether to run ETS forecasting
     """
     triage_service = setup_triage_service()
-    
+
     result = await triage_service.triage_extended(
         signal, historical_data, forecast_enabled=forecast_enabled
     )
@@ -497,6 +584,7 @@ async def execute_triage(signal: Signal, historical_data: Optional[MultiTrackHis
 # =============================================================================
 # SIGNAL FACTORY FUNCTIONS
 # =============================================================================
+
 
 def create_demo_signal() -> Signal:
     """Create a sample SIEM alert for demonstration."""
@@ -554,7 +642,9 @@ def create_signal_from_ioc(ioc_string: str) -> Signal:
     """
     # Parse IOC string
     if "=" not in ioc_string:
-        raise click.UsageError(f"Invalid IOC format: '{ioc_string}'. Expected type=value (e.g., domain=evil.com)")
+        raise click.UsageError(
+            f"Invalid IOC format: '{ioc_string}'. Expected type=value (e.g., domain=evil.com)"
+        )
 
     ioc_type, ioc_value = ioc_string.split("=", 1)
     ioc_type = ioc_type.strip().lower()
@@ -676,6 +766,7 @@ def create_signal_from_user_report(report_file: str) -> Signal:
 # NORMALIZATION
 # =============================================================================
 
+
 def normalize_signal_cli(signal: Signal) -> Signal:
     """Normalize a signal for CLI processing.
 
@@ -763,21 +854,30 @@ def _determine_signal_subtype(signal: Signal) -> str:
     description_lower = signal.description.lower()
     title_lower = signal.title.lower()
     tags = [t.lower() for t in signal.tags]
+    searchable_text = f"{description_lower} {title_lower} {' '.join(tags)}"
 
     # Check for authentication-related
-    if any(kw in description_lower or kw in title_lower for kw in ["login", "auth", "password", "credential", "brute"]):
+    if any(
+        kw in searchable_text
+        for kw in ["login", "auth", "password", "credential", "brute"]
+    ):
         return "auth"
 
     # Check for email-related
-    if any(kw in description_lower or kw in title_lower for kw in ["email", "phishing", "spam", "attachment"]):
+    if any(kw in searchable_text for kw in ["email", "phishing", "spam", "attachment"]):
         return "email"
 
     # Check for network-related
-    if any(kw in description_lower or kw in title_lower for kw in ["network", "firewall", "dns", "c2", "beacon"]):
+    if any(
+        kw in searchable_text for kw in ["network", "firewall", "dns", "c2", "beacon"]
+    ):
         return "network"
 
     # Check for endpoint-related (default for many detections)
-    if any(kw in description_lower or kw in title_lower for kw in ["process", "powershell", "script", "malware", "execution"]):
+    if any(
+        kw in searchable_text
+        for kw in ["process", "powershell", "script", "malware", "execution"]
+    ):
         return "endpoint"
 
     return "other"
@@ -826,7 +926,7 @@ def parse_signal_from_json(data: dict) -> Signal:
         system=source_data.get("system", "unknown"),
         instance=source_data.get("instance"),
         rule_id=source_data.get("rule_id"),
-        rule_name=source_data.get("rule_name")
+        rule_name=source_data.get("rule_name"),
     )
 
     return Signal(
@@ -840,7 +940,7 @@ def parse_signal_from_json(data: dict) -> Signal:
         entities=data.get("entities", {}),
         raw_data=data.get("raw_data", {}),
         tags=data.get("tags", []),
-        metadata=data.get("metadata", {})
+        metadata=data.get("metadata", {}),
     )
 
 
@@ -852,7 +952,7 @@ def format_result_as_json(result):
             "label": result.classification.label.value,
             "confidence": result.classification.confidence,
             "reasoning": result.classification.reasoning,
-            "factors": result.classification.factors
+            "factors": result.classification.factors,
         },
         "actions": [
             {
@@ -862,22 +962,18 @@ def format_result_as_json(result):
                 "title": action.title,
                 "description": action.description,
                 "source": action.source,
-                "confidence": action.confidence
+                "confidence": action.confidence,
             }
             for action in result.actions
         ],
         "enrichments": {
-            name: {
-                "status": enrich.status.value,
-                "duration_ms": enrich.duration_ms
-            }
+            name: {"status": enrich.status.value, "duration_ms": enrich.duration_ms}
             for name, enrich in result.enrichments.items()
         },
         "duration_ms": result.duration_ms,
-        "timestamp": result.timestamp.isoformat()
+        "timestamp": result.timestamp.isoformat(),
     }
 
 
 if __name__ == "__main__":
     main()
-

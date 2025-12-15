@@ -27,7 +27,6 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
 
 from soc_triage_bot.models import Signal, SignalSource, SignalType
 from soc_triage_bot.models.ai_overlay import (
@@ -1264,6 +1263,7 @@ async def run_demo():
     print("   ✓ Decision Banner AI assessment")
     print("   ✓ Section 1 AI executive summary")
     print("   ✓ Section 2 AI next checks")
+    print("   ✓ Section 3 AI context interpretation")
     print("   ✓ Section 4 AI scope interpretation")
     print("   ✓ Section 5 AI evidence citations")
     print("   ✓ Section 6 AI exposure assessment")
@@ -1271,6 +1271,7 @@ async def run_demo():
     print("   ✓ Section 8 AI timeline narrative")
     print("   ✓ Section 9 AI scorecard explanation")
     print("   ✓ Section 10 AI similar case narratives")
+    print("   ✓ Section 11 AI closure guidance")
     print("   ✓ Section 12 AI business impact summary")
     print("   ✓ Section 13 AI data quality observations")
 
