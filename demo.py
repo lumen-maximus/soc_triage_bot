@@ -30,6 +30,15 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from soc_triage_bot.models import Signal, SignalSource, SignalType
+from soc_triage_bot.models.ai_overlay import (
+    AINextCheck,
+    AIOverlay,
+    AISimilarCaseNarrative,
+    AIStatement,
+    AITrackInterpretation,
+    StatementType,
+    TPFPLikelihood,
+)
 from soc_triage_bot.models.signal import (
     ArtifactContext,
     DetectionContext,
@@ -71,15 +80,6 @@ from soc_triage_bot.models.triage_report import (
     ThreatIntelEntry,
     TriageReport,
     UserContext,
-)
-from soc_triage_bot.models.ai_overlay import (
-    AIOverlay,
-    AIStatement,
-    AINextCheck,
-    AITrackInterpretation,
-    AISimilarCaseNarrative,
-    StatementType,
-    TPFPLikelihood,
 )
 from soc_triage_bot.services.report import ReportService
 
@@ -271,25 +271,43 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
             splits=5,
             step_buckets=24,
             metrics={
-                "H1": ForecastHorizonMetrics(smape=8.2, mase=0.65, rmse=1.2, coverage95=0.92),
-                "H6": ForecastHorizonMetrics(smape=12.5, mase=0.78, rmse=3.4, coverage95=0.89),
-                "H24": ForecastHorizonMetrics(smape=18.3, mase=0.92, rmse=8.7, coverage95=0.85),
+                "H1": ForecastHorizonMetrics(
+                    smape=8.2, mase=0.65, rmse=1.2, coverage95=0.92
+                ),
+                "H6": ForecastHorizonMetrics(
+                    smape=12.5, mase=0.78, rmse=3.4, coverage95=0.89
+                ),
+                "H24": ForecastHorizonMetrics(
+                    smape=18.3, mase=0.92, rmse=8.7, coverage95=0.85
+                ),
             },
             thresholds={
                 "H1": ForecastHorizonThresholds(
-                    spike_q=0.95, drop_q=0.05,
-                    spike_threshold_p95=8.5, spike_threshold_p99=12.3, drop_threshold_p05=0.5,
+                    spike_q=0.95,
+                    drop_q=0.05,
+                    spike_threshold_p95=8.5,
+                    spike_threshold_p99=12.3,
+                    drop_threshold_p05=0.5,
                 ),
                 "H6": ForecastHorizonThresholds(
-                    spike_q=0.95, drop_q=0.05,
-                    spike_threshold_p95=35.2, spike_threshold_p99=48.7, drop_threshold_p05=3.2,
+                    spike_q=0.95,
+                    drop_q=0.05,
+                    spike_threshold_p95=35.2,
+                    spike_threshold_p99=48.7,
+                    drop_threshold_p05=3.2,
                 ),
                 "H24": ForecastHorizonThresholds(
-                    spike_q=0.95, drop_q=0.05,
-                    spike_threshold_p95=95.0, spike_threshold_p99=120.5, drop_threshold_p05=15.8,
+                    spike_q=0.95,
+                    drop_q=0.05,
+                    spike_threshold_p95=95.0,
+                    spike_threshold_p99=120.5,
+                    drop_threshold_p05=15.8,
                 ),
             },
-            notes=["Damped trend applied due to short history", "Weekday seasonality detected"],
+            notes=[
+                "Damped trend applied due to short history",
+                "Weekday seasonality detected",
+            ],
         ),
         latest=ForecastLatest(
             value=22.0,
@@ -333,14 +351,32 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
             splits=3,
             step_buckets=24,
             metrics={
-                "H1": ForecastHorizonMetrics(smape=15.3, mase=0.88, rmse=1.8, coverage95=0.85),
-                "H6": ForecastHorizonMetrics(smape=22.1, mase=1.02, rmse=4.2, coverage95=0.82),
-                "H24": ForecastHorizonMetrics(smape=28.7, mase=1.15, rmse=9.5, coverage95=0.78),
+                "H1": ForecastHorizonMetrics(
+                    smape=15.3, mase=0.88, rmse=1.8, coverage95=0.85
+                ),
+                "H6": ForecastHorizonMetrics(
+                    smape=22.1, mase=1.02, rmse=4.2, coverage95=0.82
+                ),
+                "H24": ForecastHorizonMetrics(
+                    smape=28.7, mase=1.15, rmse=9.5, coverage95=0.78
+                ),
             },
             thresholds={
-                "H1": ForecastHorizonThresholds(spike_threshold_p95=5.2, spike_threshold_p99=7.8, drop_threshold_p05=0.2),
-                "H6": ForecastHorizonThresholds(spike_threshold_p95=18.5, spike_threshold_p99=25.3, drop_threshold_p05=1.5),
-                "H24": ForecastHorizonThresholds(spike_threshold_p95=55.0, spike_threshold_p99=72.8, drop_threshold_p05=8.2),
+                "H1": ForecastHorizonThresholds(
+                    spike_threshold_p95=5.2,
+                    spike_threshold_p99=7.8,
+                    drop_threshold_p05=0.2,
+                ),
+                "H6": ForecastHorizonThresholds(
+                    spike_threshold_p95=18.5,
+                    spike_threshold_p99=25.3,
+                    drop_threshold_p05=1.5,
+                ),
+                "H24": ForecastHorizonThresholds(
+                    spike_threshold_p95=55.0,
+                    spike_threshold_p99=72.8,
+                    drop_threshold_p05=8.2,
+                ),
             },
             notes=["Limited history for IOC (first seen 5 days ago)"],
         ),
@@ -389,16 +425,37 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
             splits=5,
             step_buckets=24,
             metrics={
-                "H1": ForecastHorizonMetrics(smape=6.8, mase=0.58, rmse=0.9, coverage95=0.94),
-                "H6": ForecastHorizonMetrics(smape=10.2, mase=0.72, rmse=2.8, coverage95=0.91),
-                "H24": ForecastHorizonMetrics(smape=14.5, mase=0.85, rmse=6.2, coverage95=0.88),
+                "H1": ForecastHorizonMetrics(
+                    smape=6.8, mase=0.58, rmse=0.9, coverage95=0.94
+                ),
+                "H6": ForecastHorizonMetrics(
+                    smape=10.2, mase=0.72, rmse=2.8, coverage95=0.91
+                ),
+                "H24": ForecastHorizonMetrics(
+                    smape=14.5, mase=0.85, rmse=6.2, coverage95=0.88
+                ),
             },
             thresholds={
-                "H1": ForecastHorizonThresholds(spike_threshold_p95=7.5, spike_threshold_p99=10.2, drop_threshold_p05=0.8),
-                "H6": ForecastHorizonThresholds(spike_threshold_p95=28.5, spike_threshold_p99=38.2, drop_threshold_p05=4.5),
-                "H24": ForecastHorizonThresholds(spike_threshold_p95=85.0, spike_threshold_p99=105.2, drop_threshold_p05=18.5),
+                "H1": ForecastHorizonThresholds(
+                    spike_threshold_p95=7.5,
+                    spike_threshold_p99=10.2,
+                    drop_threshold_p05=0.8,
+                ),
+                "H6": ForecastHorizonThresholds(
+                    spike_threshold_p95=28.5,
+                    spike_threshold_p99=38.2,
+                    drop_threshold_p05=4.5,
+                ),
+                "H24": ForecastHorizonThresholds(
+                    spike_threshold_p95=85.0,
+                    spike_threshold_p99=105.2,
+                    drop_threshold_p05=18.5,
+                ),
             },
-            notes=["Daily seasonality detected (work hours pattern)", "Damped trend for stability"],
+            notes=[
+                "Daily seasonality detected (work hours pattern)",
+                "Damped trend for stability",
+            ],
         ),
         latest=ForecastLatest(
             value=18.0,
@@ -525,7 +582,12 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
             highest_exposure_severity="high",
             known_exploited_exposure=True,
             summary="CVE-2024-1234 affects 127 Windows workstations; 15 are internet-facing",
-            sample_assets=["WORKSTATION-042", "WORKSTATION-089", "WORKSTATION-156", "LAPTOP-234"],
+            sample_assets=[
+                "WORKSTATION-042",
+                "WORKSTATION-089",
+                "WORKSTATION-156",
+                "LAPTOP-234",
+            ],
         ),
         # Section 8: Related events timeline
         related_events=[
@@ -679,7 +741,10 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
             signal_type="SIEM_ALERT",
             title="Encoded PowerShell on Developer Workstation",
             outcome="FP",
-            matched_entities=["hostname_type:developer_workstation", "technique:T1059.001"],
+            matched_entities=[
+                "hostname_type:developer_workstation",
+                "technique:T1059.001",
+            ],
             notes="Different context - legitimate automation. Good comparison for FP decision.",
         ),
     ]
@@ -1089,16 +1154,32 @@ async def run_demo():
             "enabled": triage_report.forecast.enabled,
             "bucket_minutes": triage_report.forecast.bucket_minutes,
             "tracks": {
-                "rule": triage_report.forecast.tracks.rule.interpretation if triage_report.forecast.tracks.rule else None,
-                "ioc": triage_report.forecast.tracks.ioc.interpretation if triage_report.forecast.tracks.ioc else None,
-                "entity": triage_report.forecast.tracks.entity.interpretation if triage_report.forecast.tracks.entity else None,
+                "rule": (
+                    triage_report.forecast.tracks.rule.interpretation
+                    if triage_report.forecast.tracks.rule
+                    else None
+                ),
+                "ioc": (
+                    triage_report.forecast.tracks.ioc.interpretation
+                    if triage_report.forecast.tracks.ioc
+                    else None
+                ),
+                "entity": (
+                    triage_report.forecast.tracks.entity.interpretation
+                    if triage_report.forecast.tracks.entity
+                    else None
+                ),
             },
         },
         "similar_cases_count": len(triage_report.similar_cases),
         "recommendations_count": len(triage_report.recommendations),
         "ai_overlay": {
             "model_version": ai_overlay.model_version,
-            "tp_fp_likelihood": ai_overlay.tp_fp_likelihood.value if ai_overlay.tp_fp_likelihood else None,
+            "tp_fp_likelihood": (
+                ai_overlay.tp_fp_likelihood.value
+                if ai_overlay.tp_fp_likelihood
+                else None
+            ),
         },
     }
     with open(json_path, "w") as f:
