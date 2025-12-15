@@ -1,19 +1,20 @@
 """Main triage orchestration service."""
 
-from typing import Dict, Any, List, Optional
 from datetime import datetime
-from ..models import Signal, EnrichmentResult, Classification, Action
+from typing import Any, Dict, List, Optional
+
+from ..models import Action, Classification, EnrichmentResult, Signal
+from .action_proposal import ActionProposalService
+from .classification import ClassificationService
 from .enrichment import EnrichmentService
 from .forecasting import ForecastingService
-from .similarity import SimilarityService
-from .classification import ClassificationService
-from .action_proposal import ActionProposalService
 from .report import ReportService
+from .similarity import SimilarityService
 
 
 class TriageResult:
     """Complete triage result."""
-    
+
     def __init__(
         self,
         signal: Signal,
@@ -23,7 +24,7 @@ class TriageResult:
         report: str,
         forecast_data: Optional[Dict[str, Any]] = None,
         similar_cases: Optional[List[tuple]] = None,
-        duration_ms: Optional[float] = None
+        duration_ms: Optional[float] = None,
     ):
         self.signal = signal
         self.enrichments = enrichments
@@ -38,18 +39,18 @@ class TriageResult:
 
 class TriageService:
     """Main service orchestrating the complete triage workflow."""
-    
+
     def __init__(
         self,
         enrichment_service: EnrichmentService,
-        forecasting_service: ForecastingService = None,
-        similarity_service: SimilarityService = None,
-        classification_service: ClassificationService = None,
-        action_proposal_service: ActionProposalService = None,
-        report_service: ReportService = None
+        forecasting_service: Optional[ForecastingService] = None,
+        similarity_service: Optional[SimilarityService] = None,
+        classification_service: Optional[ClassificationService] = None,
+        action_proposal_service: Optional[ActionProposalService] = None,
+        report_service: Optional[ReportService] = None,
     ):
         """Initialize triage service.
-        
+
         Args:
             enrichment_service: Service for enrichments
             forecasting_service: Optional forecasting service
@@ -62,54 +63,51 @@ class TriageService:
         self.forecasting_service = forecasting_service or ForecastingService()
         self.similarity_service = similarity_service or SimilarityService()
         self.classification_service = classification_service or ClassificationService()
-        self.action_proposal_service = action_proposal_service or ActionProposalService()
+        self.action_proposal_service = (
+            action_proposal_service or ActionProposalService()
+        )
         self.report_service = report_service or ReportService()
-    
+
     async def triage(
-        self,
-        signal: Signal,
-        historical_data: List[Dict[str, Any]] = None
+        self, signal: Signal, historical_data: Optional[List[Dict[str, Any]]] = None
     ) -> TriageResult:
         """Execute complete triage workflow.
-        
+
         Args:
             signal: Signal to triage
             historical_data: Optional historical data for forecasting
-            
+
         Returns:
             Complete triage result
         """
         start_time = datetime.utcnow()
-        
+
         # Step 1: Concurrent enrichments
         enrichments = await self.enrichment_service.enrich_signal(signal)
-        
+
         # Step 2: ETS forecasting with rolling backtest
         forecast_data = None
         if historical_data:
             forecast_data = self.forecasting_service.forecast(
-                historical_data,
-                signal.signal_type.value
+                historical_data, signal.signal_type.value
             )
-        
+
         # Step 3: Similar case retrieval
         similar_cases = self.similarity_service.find_similar(signal)
-        
+
         # Step 4: Classification
         classification = self.classification_service.classify(
             signal=signal,
             enrichments=enrichments,
             similar_cases=similar_cases,
-            forecast_data=forecast_data
+            forecast_data=forecast_data,
         )
-        
+
         # Step 5: Action proposals
         actions = self.action_proposal_service.propose_actions(
-            signal=signal,
-            classification=classification,
-            enrichments=enrichments
+            signal=signal, classification=classification, enrichments=enrichments
         )
-        
+
         # Step 6: Generate report
         report = self.report_service.generate_report(
             signal=signal,
@@ -117,12 +115,12 @@ class TriageService:
             classification=classification,
             actions=actions,
             forecast_data=forecast_data,
-            similar_cases=similar_cases
+            similar_cases=similar_cases,
         )
-        
+
         # Calculate duration
         duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
-        
+
         return TriageResult(
             signal=signal,
             enrichments=enrichments,
@@ -131,5 +129,5 @@ class TriageService:
             report=report,
             forecast_data=forecast_data,
             similar_cases=similar_cases,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
         )
