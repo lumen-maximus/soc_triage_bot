@@ -84,6 +84,86 @@ from soc_triage_bot.models.triage_report import (
 from soc_triage_bot.services.report import ReportService
 
 
+# =============================================================================
+# BANNER & UI UTILITIES
+# =============================================================================
+
+# ANSI color codes
+class Colors:
+    """ANSI color codes for terminal output."""
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    UNDERLINE = '\033[4m'
+    RESET = '\033[0m'
+
+    # Gradient-like colors
+    PURPLE = '\033[38;5;135m'
+    MAGENTA = '\033[38;5;199m'
+    ORANGE = '\033[38;5;208m'
+    TEAL = '\033[38;5;43m'
+    WHITE = '\033[97m'
+
+
+def supports_color() -> bool:
+    """Check if terminal supports color output."""
+    import sys
+    if not hasattr(sys.stdout, 'isatty'):
+        return False
+    if not sys.stdout.isatty():
+        return False
+    return True
+
+
+def c(text: str, color: str) -> str:
+    """Colorize text if terminal supports it."""
+    if supports_color():
+        return f"{color}{text}{Colors.RESET}"
+    return text
+
+
+def show_banner(subtitle: str = "", show_version: bool = True):
+    """Display the SOC Agent banner with optional subtitle.
+
+    Args:
+        subtitle: Optional subtitle to display below the banner
+        show_version: Whether to show version info
+    """
+    version = "v1.0.0"
+
+    # Clean, compact ASCII art banner
+    print("")
+    print(f"  {c('╭─────────────────────────────────────────────╮', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}   {c('███████╗ ██████╗  ██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}   {c('██╔════╝██╔═══██╗██╔════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}   {c('███████╗██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}   {c('╚════██║██║   ██║██║', Colors.PURPLE)}                    {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}   {c('███████║╚██████╔╝╚██████╗', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}   {c('╚══════╝ ╚═════╝  ╚═════╝', Colors.PURPLE)}               {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}     {c('A G E N T', Colors.MAGENTA + Colors.BOLD)}                           {c('│', Colors.CYAN)}")
+    print(f"  {c('│', Colors.CYAN)}                                             {c('│', Colors.CYAN)}")
+    print(f"  {c('╰─────────────────────────────────────────────╯', Colors.CYAN)}")
+
+    # Tagline
+    tagline = "🛡️  Autonomous Security Operations Center"
+    print(f"\n    {c(tagline, Colors.WHITE + Colors.BOLD)}")
+
+    if show_version:
+        print(f"    {c(f'Version {version}', Colors.DIM)} | {c('SIEM-Agnostic • Async • AI-Ready', Colors.DIM)}")
+
+    if subtitle:
+        print(f"\n    {c('▸', Colors.TEAL)} {c(subtitle, Colors.WHITE)}")
+
+    print("")  # Empty line after banner
+
+
 def create_sample_signal() -> Signal:
     """Create a realistic sample signal with all context fields."""
     return Signal(
@@ -1078,9 +1158,11 @@ def create_ai_overlay(signal: Signal) -> AIOverlay:
 
 async def run_demo():
     """Execute the full triage demo with all sections populated."""
-    print("=" * 80)
-    print("SOC Triage Bot - Full Pipeline Demo (All 13 Sections)")
-    print("=" * 80)
+    # Display the SOC Agent banner
+    show_banner(subtitle="Full Pipeline Demo (All 13 Sections)")
+    
+    print(f"  {c('▸', Colors.TEAL)} {c('Demo Execution', Colors.BOLD + Colors.WHITE)}")
+    print(c("─" * 60, Colors.DIM))
 
     # Create signal
     print("\n[1/4] Creating sample signal with full context...")
