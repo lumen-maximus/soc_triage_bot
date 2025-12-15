@@ -1,5 +1,5 @@
 {# ============================================================================
-SOC TRIAGE REPORT (Enterprise Template v2.1)
+SOC TRIAGE REPORT (Enterprise Template v2.2)
 
 PURPOSE: Triage packet for SOC analysts + minimal stakeholder clarity.
 GOALS:
@@ -17,7 +17,8 @@ HYPOTHESIS/ASSUMPTION when not.
 AI OVERLAY SECTION MAPPING:
   Banner      -> tp_fp_likelihood, tp_fp_rationale, model_version
   §1 Summary  -> executive_summary_statements
-  §2 Actions  -> next_checks
+  §2 Actions  -> next_checks, action_rationale, action_prioritization_reasoning,
+                 additional_action_suggestions, action_dependencies, action_risks
   §3 Context  -> context_interpretation, entity_extraction_confidence, indicator_context
   §4 Scope    -> scope_interpretation, correlation_insights
   §5 TI       -> tp_fp_evidence_citations, enrichment_interpretation
@@ -26,7 +27,8 @@ AI OVERLAY SECTION MAPPING:
   §8 Timeline -> timeline_narrative, attack_chain_hypothesis
   §9 Assess   -> scorecard_explanation, hypotheses, decision_checklist
   §10 Similar -> similar_case_narratives
-  §11 Closure -> closure_guidance, tp_verification_steps, fp_verification_steps, similar_case_closure_patterns
+  §11 Closure -> closure_guidance, tp_verification_steps, fp_verification_steps,
+                 similar_case_closure_patterns
   §12 Stakeh. -> business_impact_summary, risk_communication
   §13 DataQual-> data_quality_observations, confidence_caveats
 
@@ -156,6 +158,44 @@ DECISION BANNER (single source of truth)
 - `{{ k }}`: {{ v }}
 {% endfor %}
 </details>
+{% endfor %}
+{% endif %}
+
+{% if ai_overlay and ai_overlay.action_rationale -%}
+### 🤖 AI Action Rationale
+
+{{ ai_overlay.action_rationale }}
+{% endif %}
+
+{% if ai_overlay and ai_overlay.action_prioritization_reasoning -%}
+### 🤖 Priority Reasoning
+
+{{ ai_overlay.action_prioritization_reasoning }}
+{% endif %}
+
+{% if ai_overlay and ai_overlay.additional_action_suggestions and ai_overlay.additional_action_suggestions|length > 0 -%}
+### 🤖 Additional AI Suggestions
+
+> These are AI-suggested actions beyond the deterministic recommendations. Evaluate before acting.
+
+{% for suggestion in ai_overlay.additional_action_suggestions -%}
+- {{ suggestion }}
+{% endfor %}
+{% endif %}
+
+{% if ai_overlay and ai_overlay.action_dependencies and ai_overlay.action_dependencies|length > 0 -%}
+### 🤖 Action Dependencies
+
+{% for dep in ai_overlay.action_dependencies -%}
+- ⚠️ {{ dep }}
+{% endfor %}
+{% endif %}
+
+{% if ai_overlay and ai_overlay.action_risks and ai_overlay.action_risks|length > 0 -%}
+### 🤖 Action Risks
+
+{% for risk in ai_overlay.action_risks -%}
+- ⚠️ {{ risk }}
 {% endfor %}
 {% endif %}
 

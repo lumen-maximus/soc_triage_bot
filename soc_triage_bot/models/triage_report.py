@@ -21,6 +21,20 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 # =============================================================================
+# CLASSIFICATION LABEL ENUM
+# =============================================================================
+
+
+class ClassificationLabel(str, Enum):
+    """Classification labels for signal disposition."""
+
+    TRUE_POSITIVE = "true_positive"
+    FALSE_POSITIVE = "false_positive"
+    BENIGN_POSITIVE = "benign_positive"
+    UNKNOWN = "unknown"
+
+
+# =============================================================================
 # SIGNAL TYPE EXTENSIONS
 # =============================================================================
 
@@ -365,14 +379,12 @@ class ClassificationResult(BaseModel):
     # =========================================================================
 
     @property
-    def label(self) -> "ClassificationLabel":
+    def label(self) -> ClassificationLabel:
         """Get ClassificationLabel enum from disposition string.
 
         Maps disposition to ClassificationLabel for use with
         ActionProposalService, RunbookRegistry, and other downstream services.
         """
-        from .classification import ClassificationLabel
-
         disposition_upper = self.disposition.upper().replace(" ", "_")
         if "TRUE_POSITIVE" in disposition_upper or "TRUE POSITIVE" in self.disposition:
             return ClassificationLabel.TRUE_POSITIVE

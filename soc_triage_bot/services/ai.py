@@ -249,6 +249,17 @@ class AIService:
         # Section 2 - Actions (next_checks) - parsed separately
         # Actions would require structured parsing; for now generate description
         actions_desc = await self._generate_section("section_2_actions", context)
+        action_rationale = await self._generate_section("section_2_rationale", context)
+        action_prioritization = await self._generate_section(
+            "section_2_prioritization", context
+        )
+        additional_actions = await self._generate_section(
+            "section_2_additional", context
+        )
+        action_dependencies = await self._generate_section(
+            "section_2_dependencies", context
+        )
+        action_risks = await self._generate_section("section_2_risks", context)
 
         # Section 3 - Context
         context_interp = await self._generate_section("section_3_context", context)
@@ -319,7 +330,7 @@ class AIService:
                     evidence_ids=[],
                 )
             ],
-            # Section 2 - Next Checks
+            # Section 2 - Action Plan (enhanced)
             next_checks=[
                 AINextCheck(
                     query_template_id="QT-GEN-001",
@@ -328,6 +339,23 @@ class AIService:
                     parameters={},
                 )
             ],
+            action_rationale=action_rationale or "",
+            action_prioritization_reasoning=action_prioritization or "",
+            additional_action_suggestions=(
+                [s.strip() for s in additional_actions.split("\n") if s.strip()]
+                if additional_actions
+                else []
+            ),
+            action_dependencies=(
+                [d.strip() for d in action_dependencies.split("\n") if d.strip()]
+                if action_dependencies
+                else []
+            ),
+            action_risks=(
+                [r.strip() for r in action_risks.split("\n") if r.strip()]
+                if action_risks
+                else []
+            ),
             # Section 3 - Context Interpretation
             context_interpretation=context_interp,
             entity_extraction_confidence=entity_confidence,
@@ -628,6 +656,35 @@ class AIService:
                         "event_types": "4624,4625,4648",
                     },
                 ),
+            ],
+            # §2 Action Plan - Enhanced AI fields
+            action_rationale=(
+                "Actions prioritize containment of the active C2 channel based on confirmed Cobalt Strike "
+                "beaconing (E-001), followed by credential revocation due to Mimikatz credential theft (E-003). "
+                "Investigation actions target scope assessment to identify additional compromised hosts. "
+                "TI enrichment confirms all three indicators are malicious, supporting aggressive containment posture."
+            ),
+            action_prioritization_reasoning=(
+                "1. Network isolation is highest priority to stop active data exfiltration and lateral movement. "
+                "2. Credential reset prevents attacker persistence via stolen credentials. "
+                "3. Forensic collection must occur before reimaging to preserve evidence. "
+                "4. Scope assessment informs whether to escalate to major incident."
+            ),
+            additional_action_suggestions=[
+                "Check email gateway logs for phishing emails sent to jsmith in past 7 days (likely initial access vector)",
+                "Review SharePoint/OneDrive activity for jsmith to assess potential data exfiltration",
+                "Deploy Cobalt Strike YARA rules to all endpoints for proactive hunting",
+                "Consider preemptive password reset for entire Engineering department if scope expands",
+            ],
+            action_dependencies=[
+                "Collect forensic artifacts BEFORE reimaging WORKSTATION-042",
+                "Complete scope assessment BEFORE declaring incident contained",
+                "Reset credentials AFTER confirming all attacker persistence mechanisms removed",
+            ],
+            action_risks=[
+                "Host isolation may disrupt jsmith's work - coordinate with manager before executing",
+                "Broad password reset could cause helpdesk surge - consider phased rollout",
+                "Aggressive blocking may cause false positives if C2 domain is sinkholed by TI vendor",
             ],
             # §3 Context Interpretation
             context_interpretation=(

@@ -7,7 +7,14 @@ This demo exercises the complete triage pipeline and populates ALL 13 report sec
 Header: Signal info, timestamps, metadata
 Decision Banner: Classification verdict and rationale
 §1 Summary: SOC + Stakeholder overview
-§2 Action Plan: SOC Runbook actions (recommendations)
+§2 Action Plan: SOC Runbook actions with AI enhancements:
+    - Deterministic recommendations (from ActionProposalService)
+    - AI next checks (query templates)
+    - AI action rationale (evidence-backed WHY)
+    - AI priority reasoning (action ordering)
+    - AI additional suggestions
+    - AI action dependencies
+    - AI action risks
 §3 Normalized Signal Context: Entities, indicators, CVEs
 §4 Correlation & Scope: Local sightings, scope assessment
 §5 Threat Intelligence: TI enrichment per indicator
@@ -1274,6 +1281,25 @@ async def run_demo():
     )
     print(f"{c('│', Colors.DIM)}")
 
+    # Show 5 sources with precedence (new!)
+    print(f"{c('│', Colors.DIM)} {c('Sources (by precedence):', Colors.YELLOW)}")
+    print(
+        f"{c('│', Colors.DIM)}   {c('1. seeded', Colors.GREEN)}      → Governed runbooks/playbooks (YAML)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('2. case_linked', Colors.GREEN)} → SOAR archive (proven org intelligence)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('3. learned', Colors.YELLOW)}    → Pattern-matched from similar cases"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('4. contextual', Colors.YELLOW)} → Dynamic from enrichments"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('5. template', Colors.DIM)}   → Fallback signal-type defaults"
+    )
+    print(f"{c('│', Colors.DIM)}")
+
     print(
         f"{c('│', Colors.DIM)} {c('→ ActionProposalService.propose_actions()', Colors.YELLOW)}"
     )
@@ -1281,14 +1307,42 @@ async def run_demo():
         f"{c('│', Colors.DIM)}   Inputs: signal, classification, enrichments, similar_cases"
     )
     await asyncio.sleep(0.15)
+
+    # Show actions with their sources
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('│', Colors.DIM)}   {c('Generated Actions:', Colors.WHITE)}")
     print(
-        f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)}: Isolate WORKSTATION-042 via EDR"
+        f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)} [seeded]      Isolate WORKSTATION-042 via EDR"
     )
-    print(f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)}: Reset jsmith credentials")
-    print(f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)}: Block IOCs at perimeter")
-    print(f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)}: Investigate lateral hosts")
-    print(f"{c('│', Colors.DIM)}   {c('P3', Colors.GREEN)}: Forensic imaging")
-    print(f"{c('│', Colors.DIM)}   {c('P4', Colors.DIM)}: Patch CVE-2024-1234")
+    print(
+        f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)} [case_linked] Reset jsmith credentials (from CASE-2024-0892)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)} [contextual]  Block IOCs at perimeter (TI: malicious)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)} [learned]     Investigate lateral hosts (92% similar case)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('P3', Colors.GREEN)} [seeded]      Forensic imaging"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   {c('P4', Colors.DIM)} [template]    Patch CVE-2024-1234"
+    )
+    print(f"{c('│', Colors.DIM)}")
+
+    # Show deduplication and ranking
+    print(f"{c('│', Colors.DIM)}   {c('Enterprise Features:', Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)}   → Dedupe by (intent|tool|owner|target) - 2 duplicates merged"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   → Gating: FP actions blocked, HIGH risk flagged for approval"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   → Ranking: source precedence > priority > confidence"
+    )
+    print(f"{c('│', Colors.DIM)}   → Capping: top 6, full plan max 15")
     print(f"{c('│', Colors.DIM)}")
     print(
         f"{c('└─', Colors.DIM)} {c('✓ ActionProposalService.propose_actions() complete', Colors.GREEN)}"
@@ -1345,6 +1399,11 @@ async def run_demo():
         "Decision Banner rationale",
         "Executive summary (4 statements)",
         "Next checks (3 queries)",
+        "Action rationale (evidence-backed)",
+        "Action prioritization reasoning",
+        "Additional action suggestions (4)",
+        "Action dependencies (3)",
+        "Action risks (3)",
         "Evidence citations (E-001..E-005)",
         "Trend interpretation",
         "Timeline narrative",
@@ -1427,10 +1486,13 @@ async def run_demo():
         f"{c('│', Colors.DIM)}   5. ClassificationService.classify()  → TP/FP determination"
     )
     print(
-        f"{c('│', Colors.DIM)}   6. CaseArtifactHarvester.harvest()   → Extract proven actions"
+        f"{c('│', Colors.DIM)}   6. CaseArtifactHarvester.harvest()   → Extract SOAR artifacts"
     )
     print(
-        f"{c('│', Colors.DIM)}   7. ActionProposalService.propose()   → Prioritized recommendations"
+        f"{c('│', Colors.DIM)}   7. ActionProposalService.propose()   → 5-source recommendations"
+    )
+    print(
+        f"{c('│', Colors.DIM)}      {c('seeded > case_linked > learned > contextual > template', Colors.DIM)}"
     )
     print(
         f"{c('│', Colors.DIM)}   8. RunbookRegistry.match()           → Playbook selection"
@@ -1498,6 +1560,16 @@ async def run_demo():
                 if ai_overlay.tp_fp_likelihood
                 else None
             ),
+            "next_checks_count": len(ai_overlay.next_checks),
+            "action_rationale_length": len(ai_overlay.action_rationale),
+            "action_prioritization_reasoning_length": len(
+                ai_overlay.action_prioritization_reasoning
+            ),
+            "additional_action_suggestions_count": len(
+                ai_overlay.additional_action_suggestions
+            ),
+            "action_dependencies_count": len(ai_overlay.action_dependencies),
+            "action_risks_count": len(ai_overlay.action_risks),
         },
     }
     with open(json_path, "w") as f:
@@ -1514,7 +1586,13 @@ async def run_demo():
     print("  ✓ Header: Signal info, timestamps")
     print("  ✓ Decision Banner: TRUE_POSITIVE @ 87% TP likelihood")
     print("  ✓ §1 Summary: SOC + Stakeholder overview")
-    print("  ✓ §2 Action Plan: 7 recommendations with AI next checks")
+    print("  ✓ §2 Action Plan: 7 recommendations with AI enhancements:")
+    print("      - 3 AI next checks (query templates)")
+    print("      - Action rationale (evidence-backed WHY)")
+    print("      - Priority reasoning (action ordering)")
+    print("      - 4 additional AI suggestions")
+    print("      - 3 action dependencies")
+    print("      - 3 action risks")
     print("  ✓ §3 Normalized Context: Entities, indicators, CVEs")
     print("  ✓ §4 Correlation & Scope: 3 sightings, 3 hosts impacted")
     print("  ✓ §5 Threat Intelligence: 3 indicators with TI enrichment")

@@ -10,7 +10,6 @@ from .ai_overlay import (
     StatementType,
     TPFPLikelihood,
 )
-from .classification import ClassificationLabel
 from .enrichment import (
     EnrichmentResult,
     EnrichmentStatus,
@@ -29,6 +28,7 @@ from .signal import (
 from .triage_report import (  # Signal type extensions; Forecast models; Classification; Similar cases; Recommendations; Signal context; Enrichment bundle; Executive summary; Metadata; Normalized signal; Top-level report; Track config
     SIGNAL_TYPE_TRACK_CONFIGS,
     AssetContext,
+    ClassificationLabel,
     ClassificationResult,
     EnrichmentBundle,
     EnrichmentNotes,

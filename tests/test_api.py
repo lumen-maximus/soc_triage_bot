@@ -2,8 +2,8 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from soc_triage_bot.api import app
 
+from soc_triage_bot.api import app
 
 client = TestClient(app)
 
@@ -31,22 +31,20 @@ def test_triage_signal():
         "signal_id": "test-api-001",
         "signal_type": "siem_alert",
         "timestamp": "2025-12-14T19:00:00Z",
-        "source": {
-            "system": "test"
-        },
+        "source": {"system": "test"},
         "title": "Test Alert",
         "description": "Test",
         "severity": "high",
         "entities": {"ip": ["192.0.2.1"]},
         "tags": [],
         "raw_data": {},
-        "metadata": {}
+        "metadata": {},
     }
-    
+
     response = client.post("/triage", json={"signal": signal_data})
     assert response.status_code == 200
     data = response.json()
-    
+
     assert "triage_id" in data
     assert "classification" in data
     assert "actions" in data
@@ -60,13 +58,13 @@ def test_normalize_signal():
         "title": "Test Alert",
         "description": "Test description",
         "severity": "medium",
-        "system": "test_system"
+        "system": "test_system",
     }
-    
+
     response = client.post("/signals/normalize", json=raw_signal)
     assert response.status_code == 200
     data = response.json()
-    
+
     assert "signal_id" in data
     assert data["signal_type"] == "siem_alert"
     assert data["title"] == "Test Alert"
@@ -85,21 +83,21 @@ def test_triage_signal_response_structure():
         "entities": {"ip": ["192.0.2.50"]},
         "tags": [],
         "raw_data": {},
-        "metadata": {}
+        "metadata": {},
     }
-    
+
     response = client.post("/triage", json={"signal": signal_data})
     assert response.status_code == 200
     data = response.json()
-    
-    # Check legacy fields
+
+    # Check standard fields
     assert "triage_id" in data
     assert "signal_id" in data
     assert "classification" in data
     assert "label" in data["classification"]
     assert "confidence" in data["classification"]
     assert "reasoning" in data["classification"]
-    
+
     # Check actions structure
     assert "actions" in data
     assert isinstance(data["actions"], list)
@@ -108,11 +106,11 @@ def test_triage_signal_response_structure():
         assert "action_id" in action
         assert "type" in action
         assert "priority" in action
-    
+
     # Check enrichments
     assert "enrichments" in data
     assert isinstance(data["enrichments"], dict)
-    
+
     # Check timing
     assert "duration_ms" in data
     assert "timestamp" in data
@@ -121,7 +119,7 @@ def test_triage_signal_response_structure():
 def test_triage_with_different_signal_types():
     """Test triage with various signal types."""
     signal_types = ["siem_alert", "ioc", "cve", "hunt", "user_report"]
-    
+
     for sig_type in signal_types:
         signal_data = {
             "signal_id": f"test-type-{sig_type}",
@@ -134,9 +132,9 @@ def test_triage_with_different_signal_types():
             "entities": {"ip": ["192.0.2.60"]},
             "tags": [],
             "raw_data": {},
-            "metadata": {}
+            "metadata": {},
         }
-        
+
         response = client.post("/triage", json={"signal": signal_data})
         assert response.status_code == 200, f"Failed for signal type: {sig_type}"
         data = response.json()
@@ -152,7 +150,7 @@ def test_triage_with_enriched_signal():
         "source": {
             "system": "splunk",
             "rule_id": "SPL-001",
-            "rule_name": "Suspicious PowerShell Activity"
+            "rule_name": "Suspicious PowerShell Activity",
         },
         "title": "Suspicious PowerShell Execution",
         "description": "PowerShell with encoded command detected",
@@ -160,26 +158,21 @@ def test_triage_with_enriched_signal():
         "entities": {
             "ip": ["192.0.2.80", "198.51.100.10"],
             "hostname": ["workstation-01"],
-            "username": ["admin-user"]
+            "username": ["admin-user"],
         },
-        "indicators": {
-            "domain": "evil.com",
-            "ip": "198.51.100.10"
-        },
+        "indicators": {"domain": "evil.com", "ip": "198.51.100.10"},
         "tags": ["powershell", "encoded", "suspicious"],
         "raw_data": {
             "process_name": "powershell.exe",
-            "command_line": "powershell -enc ..."
+            "command_line": "powershell -enc ...",
         },
-        "metadata": {
-            "mitre_attack": ["T1059.001"]
-        }
+        "metadata": {"mitre_attack": ["T1059.001"]},
     }
-    
+
     response = client.post("/triage", json={"signal": signal_data})
     assert response.status_code == 200
     data = response.json()
-    
+
     assert data["signal_id"] == "test-enriched-001"
     assert "classification" in data
     assert "actions" in data

@@ -27,6 +27,38 @@ class AISettings:
 
 
 @dataclass
+class ActionProposalSettings:
+    """Action proposal service configuration.
+
+    Controls limits, thresholds, and feature flags for action proposals.
+    """
+
+    # Proposal limits
+    top_proposals_min: int = 3  # Minimum actions to show in top recommendations
+    top_proposals_max: int = 6  # Maximum actions in top recommendations
+    full_plan_max: int = 15  # Maximum actions in full plan
+
+    # Case learning thresholds
+    min_similarity_for_learning: float = 0.75  # Minimum similarity to learn from case
+    max_case_age_days: int = 90  # Maximum age of cases to learn from
+    require_successful_outcome: bool = True  # Only learn from successful outcomes
+
+    # Feature flags
+    enable_runbook_registry: bool = True  # Enable governed runbooks (source 1)
+    enable_case_harvester: bool = True  # Enable SOAR artifact harvesting (source 2)
+    enable_learned_actions: bool = True  # Enable similar case learning (source 3)
+    enable_contextual_actions: bool = True  # Enable enrichment-based actions (source 4)
+    enable_template_actions: bool = True  # Enable fallback templates (source 5)
+
+    # Gating configuration
+    block_containment_on_fp: bool = True  # Block isolate/block for FP
+    require_approval_on_unknown: bool = (
+        True  # Require approval for unknown classification
+    )
+    min_confidence_for_auto_containment: float = 0.5  # Below this, require approval
+
+
+@dataclass
 class DatabaseSettings:
     """Database settings for caching and persistence."""
 
@@ -51,6 +83,9 @@ class AppSettings:
     ai: AISettings = field(default_factory=AISettings)
     database: DatabaseSettings = field(default_factory=DatabaseSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
+    action_proposal: ActionProposalSettings = field(
+        default_factory=ActionProposalSettings
+    )
 
     # Application paths
     config_dir: Path = field(default_factory=lambda: Path(__file__).parent)
@@ -118,6 +153,52 @@ class SettingsLoader:
             json_logs=os.environ.get("LOG_JSON", "false").lower() == "true",
         )
 
+        # Load action proposal settings from environment
+        action_proposal_settings = ActionProposalSettings(
+            top_proposals_min=int(os.environ.get("ACTION_TOP_MIN", "3")),
+            top_proposals_max=int(os.environ.get("ACTION_TOP_MAX", "6")),
+            full_plan_max=int(os.environ.get("ACTION_FULL_PLAN_MAX", "15")),
+            min_similarity_for_learning=float(
+                os.environ.get("ACTION_MIN_SIMILARITY", "0.75")
+            ),
+            max_case_age_days=int(os.environ.get("ACTION_MAX_CASE_AGE_DAYS", "90")),
+            require_successful_outcome=os.environ.get(
+                "ACTION_REQUIRE_SUCCESS", "true"
+            ).lower()
+            == "true",
+            enable_runbook_registry=os.environ.get(
+                "ACTION_ENABLE_RUNBOOKS", "true"
+            ).lower()
+            == "true",
+            enable_case_harvester=os.environ.get(
+                "ACTION_ENABLE_HARVESTER", "true"
+            ).lower()
+            == "true",
+            enable_learned_actions=os.environ.get(
+                "ACTION_ENABLE_LEARNED", "true"
+            ).lower()
+            == "true",
+            enable_contextual_actions=os.environ.get(
+                "ACTION_ENABLE_CONTEXTUAL", "true"
+            ).lower()
+            == "true",
+            enable_template_actions=os.environ.get(
+                "ACTION_ENABLE_TEMPLATES", "true"
+            ).lower()
+            == "true",
+            block_containment_on_fp=os.environ.get(
+                "ACTION_BLOCK_CONTAINMENT_FP", "true"
+            ).lower()
+            == "true",
+            require_approval_on_unknown=os.environ.get(
+                "ACTION_REQUIRE_APPROVAL_UNKNOWN", "true"
+            ).lower()
+            == "true",
+            min_confidence_for_auto_containment=float(
+                os.environ.get("ACTION_MIN_CONFIDENCE_AUTO", "0.5")
+            ),
+        )
+
         # Create paths
         config_dir = Path(__file__).parent
         prompts_dir = config_dir / "prompts"
@@ -135,6 +216,7 @@ class SettingsLoader:
             ai=ai_settings,
             database=db_settings,
             logging=log_settings,
+            action_proposal=action_proposal_settings,
             config_dir=config_dir,
             prompts_dir=prompts_dir,
             forecast_enabled=forecast_enabled,

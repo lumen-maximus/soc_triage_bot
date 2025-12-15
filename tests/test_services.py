@@ -47,8 +47,12 @@ async def test_enrichment_service(sample_signal):
 def test_forecasting_service():
     """Test multi-track ETS forecasting."""
     from datetime import datetime, timedelta
-    from soc_triage_bot.services.forecasting import MultiTrackHistoricalData, TrackTimeSeries
+
     from soc_triage_bot.models import Signal, SignalSource, SignalType
+    from soc_triage_bot.services.forecasting import (
+        MultiTrackHistoricalData,
+        TrackTimeSeries,
+    )
 
     service = ForecastingService()
 
@@ -69,7 +73,7 @@ def test_forecasting_service():
     values = [5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
               17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0]
     timestamps = [now - timedelta(hours=i) for i in range(len(values), 0, -1)]
-    
+
     track_a = TrackTimeSeries(
         track_name="rule",
         entity_key="rule_id",
@@ -154,20 +158,21 @@ def test_classification_service(sample_signal):
 def test_action_proposal_service(sample_signal):
     """Test action proposal generation."""
     from soc_triage_bot.models import (
-        Classification,
         ClassificationLabel,
+        ClassificationResult,
         EnrichmentResult,
         EnrichmentStatus,
     )
 
     service = ActionProposalService()
 
-    classification = Classification(
-        label=ClassificationLabel.TRUE_POSITIVE,
-        confidence=0.85,
-        reasoning=["Test"],
-        factors={},
-        forecast_data=None,
+    classification = ClassificationResult(
+        disposition="TRUE_POSITIVE",
+        tp_likelihood=0.85,
+        severity="high",
+        confidence="high",
+        reasons_tp=["Test"],
+        reasons_fp=[],
     )
 
     enrichments = {
@@ -190,8 +195,12 @@ def test_action_proposal_service(sample_signal):
 def test_forecasting_service_with_multiple_tracks():
     """Test multi-track forecasting with all three tracks populated."""
     from datetime import datetime, timedelta
-    from soc_triage_bot.services.forecasting import MultiTrackHistoricalData, TrackTimeSeries
+
     from soc_triage_bot.models import Signal, SignalSource, SignalType
+    from soc_triage_bot.services.forecasting import (
+        MultiTrackHistoricalData,
+        TrackTimeSeries,
+    )
 
     service = ForecastingService()
 
@@ -220,7 +229,7 @@ def test_forecasting_service_with_multiple_tracks():
         values=values,
         bucket_minutes=60,
     )
-    
+
     # Track B: IOC/Indicator
     track_b = TrackTimeSeries(
         track_name="ioc",
@@ -231,7 +240,7 @@ def test_forecasting_service_with_multiple_tracks():
         values=[v * 0.5 for v in values],  # Different pattern
         bucket_minutes=60,
     )
-    
+
     # Track C: Entity behavior
     track_c = TrackTimeSeries(
         track_name="entity",
@@ -264,8 +273,12 @@ def test_forecasting_service_with_multiple_tracks():
 def test_forecasting_service_insufficient_data():
     """Test forecasting with insufficient historical data."""
     from datetime import datetime, timedelta
-    from soc_triage_bot.services.forecasting import MultiTrackHistoricalData, TrackTimeSeries
+
     from soc_triage_bot.models import Signal, SignalSource, SignalType
+    from soc_triage_bot.services.forecasting import (
+        MultiTrackHistoricalData,
+        TrackTimeSeries,
+    )
 
     service = ForecastingService()
 
@@ -327,10 +340,10 @@ def test_similarity_service_extended_matching(sample_signal):
     ]
 
     service = SimilarityService(case_database=case_db)
-    
+
     # Test find_similar_extended
     similar_extended = service.find_similar_extended(sample_signal, top_k=2)
-    
+
     assert len(similar_extended) <= 2
     # Should rank the matching IP case higher
     if len(similar_extended) > 0:
@@ -341,8 +354,12 @@ def test_similarity_service_extended_matching(sample_signal):
 async def test_triage_service_with_historical_data():
     """Test triage service with multi-track historical data."""
     from datetime import datetime, timedelta
-    from soc_triage_bot.services.forecasting import MultiTrackHistoricalData, TrackTimeSeries
-    
+
+    from soc_triage_bot.services.forecasting import (
+        MultiTrackHistoricalData,
+        TrackTimeSeries,
+    )
+
     adapters = [SIEMAdapter(), EDRAdapter()]
     enrichment_service = EnrichmentService(adapters)
     triage_service = TriageService(enrichment_service=enrichment_service)
@@ -371,7 +388,7 @@ async def test_triage_service_with_historical_data():
         values=values,
         bucket_minutes=60,
     )
-    
+
     historical_data = MultiTrackHistoricalData(track_a=track_a)
 
     result = await triage_service.triage_extended(signal, historical_data)
@@ -386,10 +403,15 @@ async def test_triage_service_with_historical_data():
 def test_classification_service_with_forecast():
     """Test classification with forecast data influence."""
     from soc_triage_bot.models import EnrichmentResult, EnrichmentStatus
-    from soc_triage_bot.models.triage_report import ForecastBundle, ForecastTracks, ForecastTrack, ForecastLatest
+    from soc_triage_bot.models.triage_report import (
+        ForecastBundle,
+        ForecastLatest,
+        ForecastTrack,
+        ForecastTracks,
+    )
 
     service = ClassificationService()
-    
+
     signal = Signal(
         signal_id="test-class-forecast-001",
         signal_type=SignalType.SIEM_ALERT,
@@ -455,7 +477,7 @@ def test_classification_service_high_fp_rate():
     from soc_triage_bot.models import EnrichmentResult, EnrichmentStatus
 
     service = ClassificationService()
-    
+
     signal = Signal(
         signal_id="test-class-fp-001",
         signal_type=SignalType.SIEM_ALERT,
@@ -496,6 +518,27 @@ def test_similarity_service_with_soar_artifacts(sample_signal):
     case_db = [
         {
             "case_id": "case-soar-001",
+            "title": "Similar Alert with SOAR",
+            "description": "Case with runbook references",
+            "signal_type": "siem_alert",
+            "tags": ["malware"],
+            "entities": {"ip": ["192.0.2.100"]},
+            "outcome": "TP",
+            "actions_taken": ["Followed RB-001"],
+            "runbook_refs": [
+                {"ref_id": "RB-001", "ref_type": "runbook", "source": "soar", "title": "Malware Response"}
+            ]
+        }
+    ]
+
+    service = SimilarityService(case_database=case_db)
+    similar_cases = service.find_similar_as_models(sample_signal, top_k=1)
+
+    if len(similar_cases) > 0:
+        case = similar_cases[0]
+        assert case.case_id == "case-soar-001"
+        assert len(case.runbook_refs) > 0
+        assert case.runbook_refs[0].ref_id == "RB-001"
             "title": "Similar Alert with SOAR",
             "description": "Case with runbook references",
             "signal_type": "siem_alert",

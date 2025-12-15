@@ -8,7 +8,9 @@ replace the underlying deterministic scoring logic.
 SECTION MAPPING (AI overlays are interwoven into these sections):
     Banner              -> tp_fp_likelihood, tp_fp_rationale, model_version
     §1  Summary         -> executive_summary_statements
-    §2  Action Plan     -> next_checks
+    §2  Action Plan     -> next_checks, action_rationale, action_prioritization_reasoning,
+                           additional_action_suggestions, action_dependencies, action_risks
+    §3  Context         -> context_interpretation, entity_extraction_confidence, indicator_context
     §4  Correlation     -> scope_interpretation, correlation_insights
     §5  Threat Intel    -> enrichment_interpretation, tp_fp_evidence_citations
     §6  Exposure        -> exposure_interpretation, exploit_likelihood_assessment
@@ -16,6 +18,8 @@ SECTION MAPPING (AI overlays are interwoven into these sections):
     §8  Timeline        -> timeline_narrative, attack_chain_hypothesis
     §9  Triage Assess   -> scorecard_explanation, hypotheses, decision_checklist
     §10 Similar Cases   -> similar_case_narratives
+    §11 Closure         -> closure_guidance, tp_verification_steps, fp_verification_steps,
+                           similar_case_closure_patterns
     §12 Stakeholder     -> business_impact_summary, risk_communication
     §13 Data Quality    -> data_quality_observations, confidence_caveats
 
@@ -152,7 +156,8 @@ class AIOverlay(BaseModel):
     SECTION MAPPING:
         Banner          -> tp_fp_likelihood, tp_fp_rationale
         §1  Summary     -> executive_summary_statements
-        §2  Action Plan -> next_checks
+        §2  Action Plan -> next_checks, action_rationale, action_prioritization_reasoning,
+                           additional_action_suggestions, action_dependencies, action_risks
         §3  Context     -> context_interpretation, entity_extraction_confidence, indicator_context
         §4  Correlation -> scope_interpretation, correlation_insights
         §5  Threat Intel-> enrichment_interpretation, tp_fp_evidence_citations
@@ -161,7 +166,8 @@ class AIOverlay(BaseModel):
         §8  Timeline    -> timeline_narrative, attack_chain_hypothesis
         §9  Assessment  -> scorecard_explanation, hypotheses, decision_checklist
         §10 Similar     -> similar_case_narratives
-        §11 Closure     -> closure_guidance, tp_verification_steps, fp_verification_steps, similar_case_closure_patterns
+        §11 Closure     -> closure_guidance, tp_verification_steps, fp_verification_steps,
+                           similar_case_closure_patterns
         §12 Stakeholder -> business_impact_summary, risk_communication
         §13 Data Quality-> data_quality_observations, confidence_caveats
 
@@ -194,11 +200,31 @@ class AIOverlay(BaseModel):
     )
 
     # =========================================================================
-    # §2 ACTION PLAN - Suggested Next Checks
+    # §2 ACTION PLAN - AI-Enhanced Action Recommendations
     # =========================================================================
     next_checks: List[AINextCheck] = Field(
         default_factory=list,
-        description="Parameterized query templates for §2 Action Plan",
+        description="Parameterized query templates for investigation (SIEM/EDR queries)",
+    )
+    action_rationale: str = Field(
+        default="",
+        description="AI explanation of WHY the deterministic actions were proposed - connects evidence to recommendations",
+    )
+    action_prioritization_reasoning: str = Field(
+        default="",
+        description="AI reasoning for the priority ordering of actions (why action A before B)",
+    )
+    additional_action_suggestions: List[str] = Field(
+        default_factory=list,
+        description="AI-suggested actions beyond deterministic proposals (creative/contextual suggestions)",
+    )
+    action_dependencies: List[str] = Field(
+        default_factory=list,
+        description="Dependencies between actions (e.g., 'Collect forensics before reimaging')",
+    )
+    action_risks: List[str] = Field(
+        default_factory=list,
+        description="Potential risks or side effects of proposed actions",
     )
 
     # =========================================================================

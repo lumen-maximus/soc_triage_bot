@@ -7,8 +7,8 @@ import pytest
 from soc_triage_bot.models import (
     Action,
     ActionType,
-    Classification,
     ClassificationLabel,
+    ClassificationResult,
     EnrichmentResult,
     EnrichmentStatus,
     Signal,
@@ -51,18 +51,21 @@ def test_enrichment_result():
     assert result.data["key"] == "value"
 
 
-def test_classification():
-    """Test classification model."""
-    classification = Classification(
-        label=ClassificationLabel.TRUE_POSITIVE,
-        confidence=0.85,
-        reasoning=["Reason 1", "Reason 2"],
-        factors={"threat_intel": 0.9},
-        forecast_data=None,
+def test_classification_result():
+    """Test ClassificationResult model."""
+    from soc_triage_bot.models import ClassificationLabel, ClassificationResult
+
+    classification = ClassificationResult(
+        disposition="TRUE_POSITIVE",
+        tp_likelihood=0.85,
+        severity="high",
+        confidence="high",
+        reasons_tp=["Reason 1", "Reason 2"],
+        reasons_fp=[],
     )
 
     assert classification.label == ClassificationLabel.TRUE_POSITIVE
-    assert classification.confidence == 0.85
+    assert classification.confidence_score == 0.85
     assert len(classification.reasoning) == 2
 
 
@@ -91,8 +94,8 @@ def test_action():
 # =============================================================================
 
 
-def test_classification_result():
-    """Test ClassificationResult model."""
+def test_classification_result_extended():
+    """Test ClassificationResult model with extended fields."""
     from soc_triage_bot.models.triage_report import ClassificationResult, MitreMapping
 
     result = ClassificationResult(

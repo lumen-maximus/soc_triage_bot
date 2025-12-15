@@ -96,6 +96,81 @@ prompts:
       Consider containment, investigation, and communication needs.
     max_tokens: 400
 
+  section_2_rationale:
+    description: 'Explanation of WHY actions were recommended'
+    template: |
+      Explain WHY these actions are recommended for this security event:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition} ({classification_confidence:.0%} confidence)
+      Key Entities: {entities_json}
+      Enrichment Context: {enrichments_summary}
+      Similar Cases: {similar_cases_summary}
+
+      Connect the evidence to the recommendations. What specific findings drive each action?
+      Reference specific enrichment results, similar case outcomes, or threat intel that supports the actions.
+    max_tokens: 350
+
+  section_2_prioritization:
+    description: 'Reasoning for action priority ordering'
+    template: |
+      Explain the priority ordering for the recommended actions:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+      Asset Criticality: {enrichments_summary}
+
+      Why should action A be done before action B?
+      Consider: time-sensitivity, dependencies, risk of delay, resource availability.
+    max_tokens: 250
+
+  section_2_additional:
+    description: 'Additional AI-suggested actions beyond deterministic proposals'
+    template: |
+      Suggest additional investigation or response actions that may not be in standard runbooks:
+
+      Signal: {signal_name}
+      Type: {signal_type}
+      Context: {context_json}
+      Enrichments: {enrichments_summary}
+
+      Think creatively about:
+      - Unusual investigation angles
+      - Proactive defensive measures
+      - Communication/notification needs
+      - Detection tuning opportunities
+
+      Provide 2-4 suggestions, clearly marked as AI suggestions requiring analyst judgment.
+    max_tokens: 300
+
+  section_2_dependencies:
+    description: 'Dependencies between actions'
+    template: |
+      Identify dependencies between recommended actions:
+
+      Signal: {signal_name}
+      Entities: {entities_json}
+
+      Which actions must be completed before others?
+      (e.g., "Collect forensics before reimaging", "Verify containment before eradication")
+    max_tokens: 200
+
+  section_2_risks:
+    description: 'Potential risks of proposed actions'
+    template: |
+      Identify potential risks or unintended consequences of the recommended actions:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+      Asset Context: {enrichments_summary}
+
+      Consider:
+      - Business disruption from containment
+      - Data loss from aggressive remediation
+      - Alert fatigue from over-monitoring
+      - Legal/compliance implications
+    max_tokens: 250
+
   # Section 3 - Signal Context
   section_3_context:
     description: 'Contextual interpretation of the signal'

@@ -74,10 +74,10 @@ class TriageResult:
 class TriageService:
     """Main service orchestrating the complete triage workflow.
 
-    Extended for multi-track forecasting:
+    Multi-track forecasting support:
     - Accepts MultiTrackHistoricalData for forecast_multi_track()
     - Assembles complete TriageReport model
-    - Returns both legacy and new structured output
+    - Returns structured TriageResult with full report
     - Optionally uses AIService for AI overlay generation
     """
 
@@ -163,11 +163,9 @@ class TriageService:
         )
 
         # Step 5: Action proposals -> Recommendations
-        # Pass ClassificationResult directly - ActionProposalService now supports it
-        # via ClassificationInput union type (forward-compatible)
         actions = self.action_proposal_service.propose_actions(
             signal=signal,
-            classification=classification_result,  # Direct pass, no conversion needed
+            classification=classification_result,
             enrichments=enrichments,
             similar_cases=similar_cases_tuples,
             similar_cases_models=similar_cases_models,
@@ -198,7 +196,7 @@ class TriageService:
         return TriageResult(
             signal=signal,
             enrichments=enrichments,
-            classification=classification_result,  # Direct pass - no legacy conversion
+            classification=classification_result,
             actions=actions,
             report=report,
             forecast_data=(
@@ -336,7 +334,7 @@ class TriageService:
     def _actions_to_recommendations(
         self, actions: List[Action]
     ) -> List[Recommendation]:
-        """Convert legacy Actions to Recommendations."""
+        """Convert Actions to Recommendations for TriageReport."""
         return [
             Recommendation(
                 priority=a.priority,
