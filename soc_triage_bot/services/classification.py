@@ -1,12 +1,23 @@
-"""Classification service for TP/FP determination."""
+"""Classification service for TP/FP determination.
 
-from typing import Any, Dict, List, Optional
+Extended to support multi-track forecast consumption with per-track anomaly checks.
+Generates ClassificationResult compatible with the new triage report structure.
+"""
+
+from typing import Any, Dict, List, Optional, Union
 
 from ..models import Classification, ClassificationLabel, EnrichmentResult, Signal
+from ..models.triage_report import ClassificationResult, ForecastBundle, MitreMapping
 
 
 class ClassificationService:
-    """Service for deterministic TP/FP classification."""
+    """Service for deterministic TP/FP classification.
+
+    Extended for multi-track forecasting:
+    - Consumes ForecastBundle with tracks (rule, ioc, entity)
+    - Per-track anomaly scoring with weighted combination
+    - Evidence ID citations in reasoning
+    """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize classification service.
@@ -18,6 +29,414 @@ class ClassificationService:
         self.tp_confidence_threshold = self.config.get("tp_confidence", 0.7)
         self.fp_confidence_threshold = self.config.get("fp_confidence", 0.7)
 
+        # Track anomaly weights (priority: rule > ioc > entity)
+        self.track_weights = self.config.get(
+            "track_weights",
+            {"rule": 1.5, "ioc": 1.2, "entity": 1.0},
+        )
+
+    def classify_extended(
+        self,
+        signal: Signal,
+        enrichments: Dict[str, EnrichmentResult],
+        similar_cases: List[tuple],
+        forecast: Optional[ForecastBundle] = None,
+    ) -> ClassificationResult:
+        """Classify signal with extended multi-track support.
+
+        Args:
+            signal: The signal to classify
+            enrichments: Enrichment results with evidence_ids
+            similar_cases: List of (case_id, similarity, outcome) tuples
+            forecast: Multi-track ForecastBundle
+
+        Returns:
+            ClassificationResult with MITRE mapping and reasons_tp/reasons_fp
+        """
+        reasons_tp: List[str] = []
+        reasons_fp: List[str] = []
+        factors: Dict[str, float] = {}
+
+        # Check threat intelligence (with evidence_id)
+        ti_factor = self._check_threat_intel_extended(
+            enrichments, reasons_tp, reasons_fp
+        )
+        factors["threat_intel"] = ti_factor
+
+        # Check vulnerability data
+        vuln_factor = self._check_vulnerabilities_extended(
+            enrichments, reasons_tp, reasons_fp
+        )
+        factors["vulnerability"] = vuln_factor
+
+        # Check multi-track forecast anomaly
+        if forecast and forecast.enabled:
+            anomaly_factor = self._check_multi_track_anomaly(
+                forecast, reasons_tp, reasons_fp
+            )
+            factors["anomaly"] = anomaly_factor
+
+        # Check historical FP rate
+        fp_rate = self._check_historical_fp_rate_extended(enrichments, reasons_fp)
+        factors["historical_fp_rate"] = 1.0 - fp_rate
+
+        # Check similar cases (with outcome analysis)
+        similar_factor = self._check_similar_cases_extended(
+            similar_cases, reasons_tp, reasons_fp
+        )
+        factors["similar_cases"] = similar_factor
+
+        # Check asset criticality
+        criticality_factor = self._check_asset_criticality_extended(
+            enrichments, reasons_tp
+        )
+        factors["asset_criticality"] = criticality_factor
+
+        # Calculate overall TP likelihood
+        tp_likelihood = self._calculate_tp_likelihood(factors)
+
+        # Determine disposition
+        disposition = self._determine_disposition(tp_likelihood, factors)
+
+        # Generate MITRE mapping (simplified - would use detection rule metadata)
+        mitre = self._generate_mitre_mapping(signal)
+
+        # Determine severity
+        severity = self._determine_severity(signal, factors)
+
+        # Generate triage judgment
+        triage_judgment = self._generate_triage_judgment(
+            disposition, tp_likelihood, reasons_tp, reasons_fp
+        )
+
+        return ClassificationResult(
+            disposition=disposition,
+            tp_likelihood=tp_likelihood,
+            severity=severity,
+            confidence=self._likelihood_to_confidence(tp_likelihood),
+            reasons_tp=reasons_tp,
+            reasons_fp=reasons_fp,
+            mitre=mitre,
+            incident_type=self._determine_incident_type(signal, mitre),
+            triage_judgment=triage_judgment,
+        )
+
+    def _check_threat_intel_extended(
+        self,
+        enrichments: Dict[str, EnrichmentResult],
+        reasons_tp: List[str],
+        reasons_fp: List[str],
+    ) -> float:
+        """Check threat intelligence with evidence_id citation."""
+        ti_result = enrichments.get("threat_intel")
+        if not ti_result or ti_result.status.value != "success":
+            return 0.5
+
+        evidence_id = ti_result.evidence_id or "TI-001"
+        data = ti_result.data
+        reputation = data.get("reputation", "unknown")
+        matches = data.get("matches_found", 0)
+
+        if reputation == "malicious" or matches > 0:
+            reasons_tp.append(
+                f"Threat intel: {matches} malicious indicators found [{evidence_id}]"
+            )
+            return 0.9
+        elif reputation == "suspicious":
+            reasons_tp.append(
+                f"Threat intel: suspicious indicators detected [{evidence_id}]"
+            )
+            return 0.7
+        elif reputation == "clean":
+            reasons_fp.append(
+                f"Threat intel: indicators are clean/benign [{evidence_id}]"
+            )
+            return 0.3
+
+        return 0.5
+
+    def _check_vulnerabilities_extended(
+        self,
+        enrichments: Dict[str, EnrichmentResult],
+        reasons_tp: List[str],
+        reasons_fp: List[str],
+    ) -> float:
+        """Check vulnerability enrichment with evidence citation."""
+        vuln_result = enrichments.get("vulnerability")
+        if not vuln_result or vuln_result.status.value != "success":
+            return 0.5
+
+        evidence_id = vuln_result.evidence_id or "VULN-001"
+        data = vuln_result.data
+        critical_vulns = data.get("critical_vulns", 0)
+        exploits = data.get("exploits_available", 0)
+
+        if critical_vulns > 0 and exploits > 0:
+            reasons_tp.append(
+                f"{critical_vulns} critical vulns with public exploits [{evidence_id}]"
+            )
+            return 0.8
+        elif critical_vulns > 0:
+            reasons_tp.append(
+                f"{critical_vulns} critical vulnerabilities present [{evidence_id}]"
+            )
+            return 0.7
+        elif critical_vulns == 0:
+            reasons_fp.append(f"No critical vulnerabilities on target [{evidence_id}]")
+            return 0.4
+
+        return 0.5
+
+    def _check_multi_track_anomaly(
+        self,
+        forecast: ForecastBundle,
+        reasons_tp: List[str],
+        reasons_fp: List[str],
+    ) -> float:
+        """Check anomaly scores across all forecast tracks.
+
+        Weighted combination: rule > ioc > entity
+        """
+        track_scores = []
+        weights_used = []
+
+        tracks = forecast.tracks
+        for track_name, track in [
+            ("rule", tracks.rule),
+            ("ioc", tracks.ioc),
+            ("entity", tracks.entity),
+        ]:
+            if track and track.latest and track.latest.anomaly_score is not None:
+                score = track.latest.anomaly_score
+                weight = self.track_weights.get(track_name, 1.0)
+                track_scores.append(score * weight)
+                weights_used.append(weight)
+
+                # Add reasoning based on anomaly level
+                if score > 0.8:
+                    reasons_tp.append(
+                        f"Track {track_name}: highly anomalous ({score:.2f}) - {track.latest.current_vs_expected}"
+                    )
+                elif score > 0.5:
+                    reasons_tp.append(
+                        f"Track {track_name}: moderately elevated ({score:.2f})"
+                    )
+                elif score < 0.2:
+                    reasons_fp.append(
+                        f"Track {track_name}: within normal range ({score:.2f})"
+                    )
+
+        if not track_scores:
+            return 0.5
+
+        # Weighted average
+        combined_score = sum(track_scores) / sum(weights_used)
+        return min(max(combined_score, 0.0), 1.0)
+
+    def _check_historical_fp_rate_extended(
+        self,
+        enrichments: Dict[str, EnrichmentResult],
+        reasons_fp: List[str],
+    ) -> float:
+        """Check historical false positive rate."""
+        siem_result = enrichments.get("siem")
+        if not siem_result or siem_result.status.value != "success":
+            return 0.5
+
+        evidence_id = siem_result.evidence_id or "SIEM-001"
+        fp_rate = siem_result.data.get("historical_fp_rate", 0.5)
+
+        if fp_rate > 0.7:
+            reasons_fp.append(
+                f"High historical FP rate ({fp_rate*100:.0f}%) for this rule [{evidence_id}]"
+            )
+        elif fp_rate > 0.5:
+            reasons_fp.append(
+                f"Moderate historical FP rate ({fp_rate*100:.0f}%) [{evidence_id}]"
+            )
+
+        return fp_rate
+
+    def _check_similar_cases_extended(
+        self,
+        similar_cases: List[tuple],
+        reasons_tp: List[str],
+        reasons_fp: List[str],
+    ) -> float:
+        """Check similar historical cases with outcome analysis."""
+        if not similar_cases:
+            return 0.5
+
+        # Analyze outcomes if available (case_id, similarity, outcome)
+        tp_count = 0
+        fp_count = 0
+        total_sim = 0
+
+        for case in similar_cases:
+            case_id = case[0]
+            similarity = case[1]
+            outcome = case[2] if len(case) > 2 else None
+
+            total_sim += similarity
+            if outcome == "TP":
+                tp_count += 1
+            elif outcome == "FP":
+                fp_count += 1
+
+        avg_similarity = total_sim / len(similar_cases)
+
+        if tp_count > fp_count and avg_similarity > 0.7:
+            reasons_tp.append(
+                f"Similar to {tp_count} past TP cases (avg similarity: {avg_similarity:.2f})"
+            )
+            return 0.8
+        elif fp_count > tp_count and avg_similarity > 0.7:
+            reasons_fp.append(
+                f"Similar to {fp_count} past FP cases (avg similarity: {avg_similarity:.2f})"
+            )
+            return 0.3
+        elif len(similar_cases) > 0:
+            reasons_tp.append(f"Similar to {len(similar_cases)} past cases")
+            return 0.6
+
+        return 0.5
+
+    def _check_asset_criticality_extended(
+        self,
+        enrichments: Dict[str, EnrichmentResult],
+        reasons_tp: List[str],
+    ) -> float:
+        """Check asset criticality from CMDB."""
+        cmdb_result = enrichments.get("cmdb")
+        if not cmdb_result or cmdb_result.status.value != "success":
+            return 0.5
+
+        evidence_id = cmdb_result.evidence_id or "CMDB-001"
+        data = cmdb_result.data
+        host_assets = data.get("host_assets", {})
+
+        for hostname, asset_data in host_assets.items():
+            criticality = asset_data.get("business_criticality", "medium")
+            if criticality in ["critical", "high"]:
+                reasons_tp.append(
+                    f"Critical asset involved: {hostname} [{evidence_id}]"
+                )
+                return 0.7
+
+        return 0.5
+
+    def _calculate_tp_likelihood(self, factors: Dict[str, float]) -> float:
+        """Calculate TP likelihood from weighted factors."""
+        if not factors:
+            return 0.5
+
+        weights = {
+            "threat_intel": 1.5,
+            "vulnerability": 1.2,
+            "anomaly": 1.0,
+            "historical_fp_rate": 0.8,
+            "similar_cases": 1.0,
+            "asset_criticality": 0.8,
+        }
+
+        weighted_sum = sum(factors.get(k, 0.5) * weights.get(k, 1.0) for k in weights)
+        total_weight = sum(weights.values())
+
+        return min(max(weighted_sum / total_weight, 0.0), 1.0)
+
+    def _determine_disposition(
+        self, tp_likelihood: float, factors: Dict[str, float]
+    ) -> str:
+        """Determine disposition string."""
+        if tp_likelihood >= 0.8:
+            return "Likely True Positive"
+        elif tp_likelihood >= 0.6:
+            return "Possible True Positive"
+        elif tp_likelihood <= 0.3:
+            return "Likely False Positive"
+        elif tp_likelihood <= 0.5:
+            return "Possible False Positive"
+        else:
+            return "Inconclusive"
+
+    def _likelihood_to_confidence(self, tp_likelihood: float) -> str:
+        """Convert likelihood to confidence string."""
+        if tp_likelihood >= 0.8 or tp_likelihood <= 0.2:
+            return "high"
+        elif tp_likelihood >= 0.6 or tp_likelihood <= 0.4:
+            return "medium"
+        else:
+            return "low"
+
+    def _determine_severity(self, signal: Signal, factors: Dict[str, float]) -> str:
+        """Determine severity based on signal and factors."""
+        base_severity = signal.severity.lower()
+        if factors.get("asset_criticality", 0.5) > 0.6:
+            # Bump severity for critical assets
+            if base_severity == "medium":
+                return "high"
+            elif base_severity == "low":
+                return "medium"
+        return base_severity
+
+    def _generate_mitre_mapping(self, signal: Signal) -> MitreMapping:
+        """Generate MITRE mapping from signal."""
+        # In production, would use detection rule metadata
+        # For now, basic mapping based on signal type
+        mitre_map = {
+            "siem_alert": (["TA0001"], ["T1190"]),  # Initial Access
+            "ioc": (["TA0011"], ["T1071"]),  # C2
+            "cve": (["TA0001"], ["T1190"]),  # Initial Access
+            "edr_detection": (["TA0002"], ["T1059"]),  # Execution
+            "email_security_alert": (["TA0001"], ["T1566"]),  # Phishing
+        }
+        signal_type = signal.signal_type.value.lower()
+        tactics, techniques = mitre_map.get(signal_type, ([], []))
+
+        return MitreMapping(tactics=tactics, techniques=techniques)
+
+    def _determine_incident_type(self, signal: Signal, mitre: MitreMapping) -> str:
+        """Determine incident type."""
+        type_map = {
+            "siem_alert": "Security Alert",
+            "ioc": "Indicator Match",
+            "cve": "Vulnerability Exploitation",
+            "edr_detection": "Endpoint Detection",
+            "email_security_alert": "Email Threat",
+            "hunt": "Threat Hunt Finding",
+        }
+        return type_map.get(signal.signal_type.value.lower(), "Security Incident")
+
+    def _generate_triage_judgment(
+        self,
+        disposition: str,
+        tp_likelihood: float,
+        reasons_tp: List[str],
+        reasons_fp: List[str],
+    ) -> str:
+        """Generate human-readable triage judgment."""
+        if tp_likelihood >= 0.7:
+            return (
+                f"Signal assessed as {disposition} ({tp_likelihood*100:.0f}% TP likelihood). "
+                f"{len(reasons_tp)} factors favor TP, {len(reasons_fp)} favor FP. "
+                "Recommend escalation to Tier 2 or IR."
+            )
+        elif tp_likelihood <= 0.3:
+            return (
+                f"Signal assessed as {disposition} ({tp_likelihood*100:.0f}% TP likelihood). "
+                f"{len(reasons_fp)} factors favor FP. "
+                "Recommend closing as false positive with tuning review."
+            )
+        else:
+            return (
+                f"Signal assessed as {disposition} ({tp_likelihood*100:.0f}% TP likelihood). "
+                "Evidence is inconclusive - additional investigation recommended."
+            )
+
+    # =========================================================================
+    # LEGACY METHOD (for backward compatibility)
+    # =========================================================================
+
     def classify(
         self,
         signal: Signal,
@@ -25,49 +444,33 @@ class ClassificationService:
         similar_cases: List[tuple],
         forecast_data: Optional[Dict[str, Any]] = None,
     ) -> Classification:
-        """Classify signal as TP/FP using deterministic rules.
+        """Legacy classify method - returns old Classification model.
 
-        Args:
-            signal: The signal to classify
-            enrichments: Enrichment results
-            similar_cases: List of (case_id, similarity) tuples
-            forecast_data: Optional forecast data
-
-        Returns:
-            Classification result
+        DEPRECATED: Use classify_extended() for new code.
         """
         factors = {}
         reasoning = []
 
-        # Check threat intelligence
         ti_factor = self._check_threat_intel(enrichments, reasoning)
         factors["threat_intel"] = ti_factor
 
-        # Check vulnerability data
         vuln_factor = self._check_vulnerabilities(enrichments, reasoning)
         factors["vulnerability"] = vuln_factor
 
-        # Check anomaly/forecast data
         if forecast_data:
             anomaly_factor = self._check_anomaly(forecast_data, reasoning)
             factors["anomaly"] = anomaly_factor
 
-        # Check historical FP rate
         fp_rate = self._check_historical_fp_rate(enrichments, reasoning)
-        factors["historical_fp_rate"] = 1.0 - fp_rate  # Invert for scoring
+        factors["historical_fp_rate"] = 1.0 - fp_rate
 
-        # Check similar cases
         similar_factor = self._check_similar_cases(similar_cases, reasoning)
         factors["similar_cases"] = similar_factor
 
-        # Check asset criticality
         criticality_factor = self._check_asset_criticality(enrichments, reasoning)
         factors["asset_criticality"] = criticality_factor
 
-        # Calculate overall confidence
         confidence = self._calculate_confidence(factors)
-
-        # Determine label based on factors
         label = self._determine_label(factors, confidence)
 
         return Classification(
@@ -82,13 +485,10 @@ class ClassificationService:
     def _check_threat_intel(
         self, enrichments: Dict[str, EnrichmentResult], reasoning: List[str]
     ) -> float:
-        """Check threat intelligence enrichment.
-
-        Returns factor score 0-1 (higher = more likely TP).
-        """
+        """Legacy threat intel check."""
         ti_result = enrichments.get("threat_intel")
         if not ti_result or ti_result.status.value != "success":
-            return 0.5  # Neutral
+            return 0.5
 
         data = ti_result.data
         reputation = data.get("reputation", "unknown")
@@ -108,7 +508,7 @@ class ClassificationService:
     def _check_vulnerabilities(
         self, enrichments: Dict[str, EnrichmentResult], reasoning: List[str]
     ) -> float:
-        """Check vulnerability enrichment."""
+        """Legacy vulnerability check."""
         vuln_result = enrichments.get("vulnerability")
         if not vuln_result or vuln_result.status.value != "success":
             return 0.5
@@ -131,7 +531,7 @@ class ClassificationService:
     def _check_anomaly(
         self, forecast_data: Dict[str, Any], reasoning: List[str]
     ) -> float:
-        """Check anomaly/forecast data."""
+        """Legacy anomaly check."""
         if not forecast_data or not forecast_data.get("forecast_available"):
             return 0.5
 
@@ -149,7 +549,7 @@ class ClassificationService:
     def _check_historical_fp_rate(
         self, enrichments: Dict[str, EnrichmentResult], reasoning: List[str]
     ) -> float:
-        """Check historical false positive rate."""
+        """Legacy FP rate check."""
         siem_result = enrichments.get("siem")
         if not siem_result or siem_result.status.value != "success":
             return 0.5
@@ -168,12 +568,10 @@ class ClassificationService:
     def _check_similar_cases(
         self, similar_cases: List[tuple], reasoning: List[str]
     ) -> float:
-        """Check similar historical cases."""
+        """Legacy similar cases check."""
         if not similar_cases:
             return 0.5
 
-        # For now, just count similar cases
-        # In production, would check if they were TPs or FPs
         count = len(similar_cases)
         avg_similarity = sum(sim for _, sim in similar_cases) / count
 
@@ -191,7 +589,7 @@ class ClassificationService:
     def _check_asset_criticality(
         self, enrichments: Dict[str, EnrichmentResult], reasoning: List[str]
     ) -> float:
-        """Check asset criticality from CMDB."""
+        """Legacy asset criticality check."""
         cmdb_result = enrichments.get("cmdb")
         if not cmdb_result or cmdb_result.status.value != "success":
             return 0.5
@@ -208,11 +606,10 @@ class ClassificationService:
         return 0.5
 
     def _calculate_confidence(self, factors: Dict[str, float]) -> float:
-        """Calculate overall confidence score."""
+        """Legacy confidence calculation."""
         if not factors:
             return 0.5
 
-        # Weighted average of factors
         weights = {
             "threat_intel": 1.5,
             "vulnerability": 1.2,
@@ -236,8 +633,7 @@ class ClassificationService:
     def _determine_label(
         self, factors: Dict[str, float], confidence: float
     ) -> ClassificationLabel:
-        """Determine classification label."""
-        # If high threat intel or vulnerability with high confidence -> TP
+        """Legacy label determination."""
         if (
             factors.get("threat_intel", 0) > 0.8
             or factors.get("vulnerability", 0) > 0.8
@@ -245,12 +641,10 @@ class ClassificationService:
             if confidence >= self.tp_confidence_threshold:
                 return ClassificationLabel.TRUE_POSITIVE
 
-        # If high FP rate and low confidence -> FP
         fp_rate = 1.0 - factors.get("historical_fp_rate", 0.5)
         if fp_rate > 0.7 and confidence < 0.6:
             return ClassificationLabel.FALSE_POSITIVE
 
-        # Overall confidence-based classification
         if confidence >= self.tp_confidence_threshold:
             return ClassificationLabel.TRUE_POSITIVE
         elif confidence <= (1.0 - self.fp_confidence_threshold):

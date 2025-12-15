@@ -34,7 +34,7 @@ dev = [
 ]
 
 [project.scripts]
-soc-triage = "soc_triage_bot.cli:main"
+soc-agent = "soc_triage_bot.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -1,19 +1,36 @@
-"""Report generation service using Jinja templates."""
+"""Report generation service using Jinja templates.
 
-from datetime import datetime, timezone
+This service renders the 13-section triage report from a TriageReport model.
+It uses the enterprise template: triage_report.md.j2
+
+FORWARD ONLY: This service requires the new TriageReport model structure.
+No legacy fallbacks or backward compatibility with old Signal/Classification models.
+"""
+
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader
 
-from ..models import Action, AIOverlay, Classification, EnrichmentResult, Signal
+from ..models import AIOverlay
+from ..models.triage_report import TriageReport
 
 # Default template directory (relative to this file)
 DEFAULT_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
+TEMPLATE_NAME = "triage_report.md.j2"
 
 
 class ReportService:
-    """Service for rendering triage reports."""
+    """Service for rendering triage reports.
+
+    Requires:
+        - TriageReport model with all sections populated
+        - Optional AIOverlay for LLM-generated insights
+
+    Usage:
+        service = ReportService()
+        report_md = service.generate_report(triage_report, ai_overlay=ai_overlay)
+    """
 
     def __init__(self, template_dir: Optional[str] = None):
         """Initialize report service.
@@ -21,106 +38,51 @@ class ReportService:
         Args:
             template_dir: Directory containing Jinja templates.
                          If not provided, uses the default templates directory.
-        """
-        if template_dir:
-            self.template_path = Path(template_dir)
-        else:
-            self.template_path = DEFAULT_TEMPLATE_DIR
 
-        # Initialize Jinja environment with template directory
-        if self.template_path.exists():
-            self.env = Environment(loader=FileSystemLoader(str(self.template_path)))
-        else:
-            self.env = None
+        Raises:
+            FileNotFoundError: If template directory or template file doesn't exist.
+        """
+        self.template_path = (
+            Path(template_dir) if template_dir else DEFAULT_TEMPLATE_DIR
+        )
+
+        if not self.template_path.exists():
+            raise FileNotFoundError(
+                f"Template directory not found: {self.template_path}"
+            )
+
+        template_file = self.template_path / TEMPLATE_NAME
+        if not template_file.exists():
+            raise FileNotFoundError(f"Template file not found: {template_file}")
+
+        self.env = Environment(loader=FileSystemLoader(str(self.template_path)))
 
     def generate_report(
         self,
-        signal: Signal,
-        enrichments: Dict[str, EnrichmentResult],
-        classification: Classification,
-        actions: List[Action],
-        forecast_data: Optional[Dict[str, Any]] = None,
-        similar_cases: Optional[List[tuple]] = None,
+        r: TriageReport,
         ai_overlay: Optional[AIOverlay] = None,
     ) -> str:
-        """Generate Markdown triage report.
+        """Generate Markdown triage report from TriageReport model.
 
         Args:
-            signal: The signal
-            enrichments: Enrichment results
-            classification: Classification result
-            actions: Proposed actions
-            forecast_data: Optional forecast data
-            similar_cases: Optional similar cases
-            ai_overlay: Optional AI overlay data (LLM-generated summaries/explanations)
+            r: The complete TriageReport model containing all 13 sections.
+            ai_overlay: Optional AI overlay with LLM-generated summaries/explanations.
 
         Returns:
-            Markdown report string
+            Rendered Markdown report string.
+
+        Template Variables:
+            - r: TriageReport (top-level container)
+            - r.signal: NormalizedSignal
+            - r.meta: ReportMeta
+            - r.ctx: SignalContext (entity focus)
+            - r.classification: ClassificationResult
+            - r.forecast: ForecastData (with tracks)
+            - r.enrich: EnrichmentBundle
+            - r.similar_cases: List[SimilarCase]
+            - r.recommendations: List[Recommendation]
+            - r.exec: ExecutiveSummary
+            - ai_overlay: AIOverlay (optional, LLM insights)
         """
-        # Prepare data for template
-        context = {
-            "signal": signal,
-            "enrichments": enrichments,
-            "classification": classification,
-            "actions": actions,
-            "forecast_data": forecast_data or {},
-            "similar_cases": similar_cases or [],
-            "ai_overlay": ai_overlay,  # None if AI not enabled
-            "now": datetime.now(timezone.utc),
-        }
-
-        template = self._get_template()
-        return template.render(**context)
-
-    def _get_template(self) -> Template:
-        """Get the report template.
-
-        Returns:
-            Jinja2 Template object for rendering the report.
-        """
-        if self.env:
-            try:
-                return self.env.get_template("triage_report.md.j2")
-            except Exception:
-                pass
-
-        # Fallback: minimal inline template if external template not available
-        return Template(self._get_fallback_template())
-
-    def _get_fallback_template(self) -> str:
-        """Get a minimal fallback template if external template is not available."""
-        return """# SOC Triage Report – {{ signal.signal_id }}
-
-## Decision Banner
-
-> **Triage Decision:** **{{ classification.label.value.upper() }}**
-> **Confidence:** **{{ "%.0f"|format(classification.confidence * 100) }}%**
-
-## Signal Information
-
-- **Type:** {{ signal.signal_type.value }}
-- **Title:** {{ signal.title }}
-- **Severity:** {{ signal.severity }}
-- **Timestamp:** {{ signal.timestamp.isoformat() }}
-
-## Classification
-
-- **Label:** {{ classification.label.value.upper() }}
-- **Confidence:** {{ "%.0f"|format(classification.confidence * 100) }}%
-
-### Reasoning
-{% for reason in classification.reasoning %}
-- {{ reason }}
-{% endfor %}
-
-## Recommended Actions
-
-{% for action in actions %}
-### {{ loop.index }}. {{ action.title }} (Priority {{ action.priority }})
-
-{{ action.description }}
-
-{% endfor %}
-
-*Generated by SOC Triage Bot*
-"""
+        template = self.env.get_template(TEMPLATE_NAME)
+        return template.render(r=r, ai_overlay=ai_overlay)

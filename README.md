@@ -41,24 +41,24 @@ pip install -e ".[dev]"
 
 ```bash
 # Start the REST API server
-soc-triage serve --host 0.0.0.0 --port 8000
+soc-agent serve --host 0.0.0.0 --port 8000
 
 # Triage a signal from a JSON file
-soc-triage triage examples/siem_alert.json -o report.md
+soc-agent triage examples/siem_alert.json -o report.md
 
 # Triage with historical data for forecasting
-soc-triage triage examples/siem_alert.json \
+soc-agent triage examples/siem_alert.json \
   --historical-data examples/historical_data.json \
   -o report.md
 
 # Create and triage a signal interactively
-soc-triage create --type siem_alert
+soc-agent create --type siem_alert
 
 # Validate a signal file
-soc-triage validate examples/siem_alert.json
+soc-agent validate examples/siem_alert.json
 
 # Check adapter health
-soc-triage health
+soc-agent health
 ```
 
 ### REST API Usage
@@ -66,7 +66,7 @@ soc-triage health
 Start the server:
 
 ```bash
-soc-triage serve
+soc-agent serve
 ```
 
 Or with uvicorn directly:
@@ -182,7 +182,7 @@ class MySIEMAdapter(BaseAdapter):
     async def enrich(self, signal: Signal) -> EnrichmentResult:
         # Query your SIEM
         data = await query_my_siem(signal)
-        
+
         return EnrichmentResult(
             adapter=self.name,
             status=EnrichmentStatus.SUCCESS,
@@ -241,6 +241,7 @@ soc_triage_bot/
 ## API Documentation
 
 When the server is running, visit:
+
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
@@ -270,6 +271,7 @@ MIT License - see LICENSE file for details
 ## Contributing
 
 Contributions welcome! Please:
+
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new functionality

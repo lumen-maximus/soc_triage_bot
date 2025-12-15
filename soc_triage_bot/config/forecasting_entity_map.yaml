@@ -1,0 +1,296 @@
+# forecasting_entity_map.yaml
+# Purpose:
+#   For ANY incoming signal, attempt up to 3 ETS tracks:
+#     A) detection/rule series (if detection identity exists)
+#     B) indicator/artifact sightings series (if IOC/artifact exists)
+#     C) entity-behavior series (if host/user/service exists)
+#
+# Notes:
+# - "keys" are the entity dimensions you aggregate by.
+# - "metrics" are canonical series names; your SIEM/EDR adapters implement how to compute them.
+# - "preferred" lists are ordered; pick first available.
+# - "fallbacks" are used if preferred keys are missing.
+# - "overlap" is intentional: same entities appear across signal types for portability.
+
+version: 1
+bucket_minutes_default: 15
+horizons_hours: [1, 6, 24]
+history_window_days_default: 56
+late_arrival_window_minutes: 120
+
+common_entities:
+  detection_keys:
+    [
+      rule_id,
+      analytic_id,
+      rule_name,
+      vendor,
+      product,
+      use_case,
+      analytic_family,
+    ]
+  identity_keys: [username, user_id, email, service_account, role]
+  endpoint_keys: [hostname, device_id, agent_id, os, asset_group]
+  network_keys: [src_ip, dst_ip, dst_port, subnet_24, asn, geo]
+  webdns_keys: [domain, subdomain, url, uri_path, sni, dns_qname]
+  fileproc_keys:
+    [sha256, md5, file_path, process_name, cmdline_hash, parent_process]
+  email_keys:
+    [
+      sender,
+      recipient,
+      sender_domain,
+      message_id,
+      subject_cluster,
+      attachment_hash,
+    ]
+  cloud_keys: [cloud_account_id, tenant_id, resource_id, region, iam_principal]
+  vuln_keys: [cve, product, service, exposure_class, affected_asset_count]
+  org_keys: [business_unit, owner, criticality, network_segment, service_name]
+
+tracks:
+  # Track A: detection/rule trend
+  A_detection_rule:
+    enabled: true
+    series_kind: count_per_bucket
+    entity_signature: 'detection'
+    keys_preferred: [rule_id, analytic_id, rule_name]
+    fallbacks: [analytic_family, use_case, vendor]
+    metrics_preferred:
+      - alert_firings_count
+      - detection_hits_count
+    reliability_min_history_days: 28
+
+  # Track B: IOC/artifact sightings trend
+  B_indicator_artifact:
+    enabled: true
+    series_kind: count_per_bucket
+    entity_signature: 'indicator_or_artifact'
+    keys_preferred:
+      - indicator_value # canonical: "type=value" (e.g., domain=evil.com)
+      - domain
+      - ip
+      - url
+      - sha256
+      - cmdline_hash
+    fallbacks: [process_name, sender_domain]
+    metrics_preferred:
+      - indicator_sightings_count
+      - artifact_occurrence_count
+    reliability_min_history_days: 14
+
+  # Track C: entity behavior trend (host/user/service)
+  C_entity_behavior:
+    enabled: true
+    series_kind: count_per_bucket
+    entity_signature: 'entity'
+    keys_preferred:
+      [hostname, device_id, username, cloud_account_id, service_name]
+    fallbacks: [network_segment, business_unit]
+    metrics_preferred:
+      - entity_suspicious_behavior_count
+      - entity_auth_anomaly_count
+      - entity_network_anomaly_count
+      - entity_process_anomaly_count
+    reliability_min_history_days: 28
+
+signal_types:
+  SIEM_ALERT:
+    # Always try all 3 tracks; choose behavior metric by subtype.
+    tracks:
+      A_detection_rule:
+        keys_preferred: [rule_id, analytic_id, rule_name]
+        metrics_preferred: [alert_firings_count]
+      B_indicator_artifact:
+        keys_preferred: [indicator_value, domain, ip, url, sha256, cmdline_hash]
+        metrics_preferred:
+          [indicator_sightings_count, artifact_occurrence_count]
+      C_entity_behavior:
+        # Pick primary based on alert_subtype mapping below
+        keys_preferred: [hostname, device_id, username]
+        subtype_metric_map:
+          auth: [entity_auth_anomaly_count] # failed logins, MFA denials, impossible travel
+          endpoint_exec: [entity_process_anomaly_count] # suspicious process chains, LOLBins, script engines
+          network: [entity_network_anomaly_count] # rare domains, beacon patterns, unusual ports
+          email: [entity_suspicious_behavior_count] # mailbox hits, quarantine events
+          cloud: [entity_suspicious_behavior_count] # IAM anomalies, unusual API calls
+        fallbacks: [network_segment, business_unit]
+
+  TI_INDICATOR:
+    tracks:
+      A_detection_rule:
+        enabled: false # enable only if you can map IOC -> detection families
+      B_indicator_artifact:
+        keys_preferred: [indicator_value] # MUST include type=value
+        metrics_preferred: [indicator_sightings_count]
+      C_entity_behavior:
+        # Only once sightings produce impacted entities
+        keys_preferred: [hostname, device_id, username]
+        metrics_preferred: [entity_suspicious_behavior_count]
+        fallbacks: [network_segment]
+
+  VULNERABILITY_ALERT:
+    tracks:
+      A_detection_rule:
+        # Optional: only if you have explicit exploit detection analytics
+        enabled: true
+        keys_preferred: [rule_id, analytic_id, rule_name]
+        metrics_preferred: [detection_hits_count]
+      B_indicator_artifact:
+        # For vuln-led, treat "cve" as the indicator-like object
+        keys_preferred: [cve, product, service]
+        metrics_preferred:
+          - exploit_telemetry_count # best: IDS/WAF/EDR exploit-prevention related to CVE/service
+          - new_vulnerable_assets_count # exposure drift
+          - patched_assets_count # remediation throughput
+      C_entity_behavior:
+        keys_preferred: [service_name, hostname, device_id, network_segment]
+        metrics_preferred:
+          - entity_suspicious_behavior_count
+          - entity_network_anomaly_count
+
+  HUNT_FINDING:
+    tracks:
+      A_detection_rule:
+        # Use hunt_id as pseudo-rule if no rule_id
+        keys_preferred: [hunt_id, analytic_family, rule_name]
+        metrics_preferred: [hunt_matches_count]
+      B_indicator_artifact:
+        keys_preferred:
+          [indicator_value, sha256, domain, ip, process_name, cmdline_hash]
+        metrics_preferred:
+          [artifact_occurrence_count, indicator_sightings_count]
+      C_entity_behavior:
+        keys_preferred: [hostname, device_id, username, cloud_account_id]
+        metrics_preferred: [entity_suspicious_behavior_count]
+
+  USER_REPORTED:
+    tracks:
+      A_detection_rule:
+        enabled: false # becomes true only after correlation finds matching detection identity
+      B_indicator_artifact:
+        keys_preferred:
+          [indicator_value, url, domain, sender_domain, attachment_hash]
+        metrics_preferred: [indicator_sightings_count]
+      C_entity_behavior:
+        keys_preferred: [username, hostname, device_id]
+        # Choose by complaint category if available:
+        complaint_metric_map:
+          account_issue: [entity_auth_anomaly_count]
+          popups_redirects: [entity_network_anomaly_count]
+          slow_machine: [entity_process_anomaly_count]
+          suspicious_email: [entity_suspicious_behavior_count]
+        fallbacks: [network_segment]
+
+  EDR_DETECTION:
+    tracks:
+      A_detection_rule:
+        keys_preferred: [edr_detection_id, edr_detection_name, tactic_technique]
+        metrics_preferred: [edr_detection_count]
+      B_indicator_artifact:
+        keys_preferred: [sha256, process_name, cmdline_hash, domain, ip]
+        metrics_preferred:
+          [artifact_occurrence_count, indicator_sightings_count]
+      C_entity_behavior:
+        keys_preferred: [device_id, hostname, username]
+        metrics_preferred: [entity_suspicious_behavior_count]
+
+  EMAIL_SECURITY_ALERT:
+    tracks:
+      A_detection_rule:
+        keys_preferred: [rule_id, policy_id, rule_name]
+        metrics_preferred: [email_alert_count]
+      B_indicator_artifact:
+        keys_preferred: [sender_domain, url, attachment_hash, indicator_value]
+        metrics_preferred: [indicator_sightings_count]
+      C_entity_behavior:
+        keys_preferred: [recipient, mailbox, username]
+        metrics_preferred: [entity_suspicious_behavior_count]
+
+  IOC:
+    tracks:
+      A_detection_rule:
+        enabled: false
+      B_indicator_artifact:
+        keys_preferred: [indicator_value, ioc_type, ioc_value]
+        metrics_preferred: [indicator_sightings_count]
+      C_entity_behavior:
+        keys_preferred: [hostname, src_ip, username]
+        metrics_preferred: [entity_suspicious_behavior_count]
+        fallbacks: [network_segment]
+
+  CVE:
+    tracks:
+      A_detection_rule:
+        keys_preferred: [cve_id, scanner]
+        metrics_preferred: [exploit_detection_count]
+      B_indicator_artifact:
+        keys_preferred: [cve, exploit_available, epss_score]
+        metrics_preferred: [exploit_telemetry_count]
+      C_entity_behavior:
+        keys_preferred: [hostname, asset_criticality]
+        metrics_preferred: [entity_suspicious_behavior_count]
+
+  HUNT:
+    tracks:
+      A_detection_rule:
+        keys_preferred: [hunt_id, hypothesis]
+        metrics_preferred: [hunt_matches_count]
+      B_indicator_artifact:
+        keys_preferred: [query_hash, detection_logic]
+        metrics_preferred: [artifact_occurrence_count]
+      C_entity_behavior:
+        keys_preferred: [hostname, username]
+        metrics_preferred: [entity_suspicious_behavior_count]
+
+  USER_REPORT:
+    tracks:
+      A_detection_rule:
+        enabled: false
+      B_indicator_artifact:
+        keys_preferred: [reported_ioc, attachment_hash]
+        metrics_preferred: [indicator_sightings_count]
+      C_entity_behavior:
+        keys_preferred: [reporter, affected_user]
+        metrics_preferred: [entity_suspicious_behavior_count]
+
+selection_rules:
+  # Deterministic priority when multiple candidate entities exist
+  primary_entity_priority:
+    - detection_identity # rule_id / analytic_id / rule_name (for detection-led)
+    - explicit_ioc # indicator_value (type=value)
+    - cve_service # cve + service/product (for vuln-led)
+    - device_or_host # device_id/hostname
+    - user_identity # username/user_id
+    - segment_or_bu # network_segment/business_unit (aggregate fallback)
+
+  # When Track B uses indicator_value, normalize to:
+  #   "<type>=<value>" lowercased (except CVE uppercased)
+  indicator_value_format: '<indicator_type>=<indicator_value>'
+
+  # Reliability gate (applies to any track before it influences recommendations)
+  reliability_gate:
+    min_history_days_default: 28
+    require_backtest: true
+    allow_influence_actions_if_reliability_at_least: 'MEDIUM'
+    suggested_metrics:
+      - MASE
+      - sMAPE
+      - coverage95
+
+  # Quality gates for reliability levels
+  quality_gates:
+    LOW:
+      # Default if history < min_days or metrics don't meet MEDIUM thresholds
+      description: 'Insufficient history or poor backtest performance'
+    MEDIUM:
+      mase_h6_max: 1.3
+      mase_h24_max: 1.3
+      missing_pct_max: 0.05
+      description: 'Acceptable forecast accuracy'
+    HIGH:
+      mase_h6_max: 1.1
+      coverage95_min: 0.85
+      coverage95_max: 0.98
+      missing_pct_max: 0.02
+      description: 'High confidence forecast'
