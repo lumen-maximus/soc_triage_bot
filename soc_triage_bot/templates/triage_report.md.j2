@@ -1,0 +1,466 @@
+{# ============================================================================
+SOC TRIAGE REPORT (Enterprise Template)
+- Purpose: Triage packet for SOC analysts + minimal stakeholder clarity.
+- Goals: (1) classify TP/FP/Needs Review, (2) summarize supporting evidence,
+         (3) recommend actions, (4) include calibrated ETS multi-horizon trend context.
+- Non-redundancy rule: each section answers a distinct question; avoid repeating facts.
+============================================================================ #}
+
+{# ============================================================================
+HEADER
+============================================================================ #}
+# SOC Triage Report – {{ signal.signal_id }}
+
+**Signal Type:** {{ signal.signal_type.value }}
+**Signal Source:** {{ signal.source.system }}
+**Signal Name:** {{ signal.title }}
+**Timestamp (UTC):** {{ signal.timestamp.isoformat() }}
+**Severity:** {{ signal.severity }}
+**Generated (UTC):** {{ now.isoformat() if now else "N/A" }}
+
+{# ============================================================================
+DECISION BANNER (single source of truth)
+============================================================================ #}
+---
+
+## Decision Banner
+
+> **Triage Decision:** **{{ classification.label.value.upper() }}**
+> **Severity:** **{{ signal.severity }}**
+> **TP Likelihood:** **{{ "%.0f"|format(classification.confidence * 100) }}%**
+> **Confidence:** {{ "High" if classification.confidence >= 0.8 else ("Medium" if classification.confidence >= 0.5 else "Low") }}
+
+**Top Rationale:**
+{% if classification.reasoning and classification.reasoning|length > 0 -%}
+- {{ classification.reasoning[0] }}
+{% else -%}
+- Classification based on available evidence and enrichment data.
+{% endif %}
+
+**Immediate Next Steps (P1/P2):**
+{% if actions and actions|length > 0 -%}
+1. {{ actions[0].title }}: {{ actions[0].description }}
+{% if actions|length > 1 -%}
+2. {{ actions[1].title }}: {{ actions[1].description }}
+{% endif -%}
+{% else -%}
+1. Review enrichment data and validate signal.
+2. Determine scope and collect additional evidence.
+{% endif %}
+
+{# ============================================================================
+AI OVERLAY SECTION (conditionally rendered when AI is enabled)
+This layer is applied AFTER deterministic scoring is complete.
+It provides human-readable explanations and suggestions, NOT replacement scores.
+============================================================================ #}
+{% if ai_overlay %}
+---
+
+## 🤖 AI Analysis (Advisory Layer)
+
+> ⚠️ **Note:** This section is AI-generated and advisory only. It does NOT replace
+> the deterministic scoring above. Always verify AI suggestions against evidence.
+
+### AI Executive Summary
+{% if ai_overlay.executive_summary and ai_overlay.executive_summary|length > 0 -%}
+{% for bullet in ai_overlay.executive_summary -%}
+- {{ bullet }}
+{% endfor %}
+{% else -%}
+*AI executive summary not available.*
+{% endif %}
+
+### AI Scorecard Explanation
+{% if ai_overlay.scorecard_explanation -%}
+{{ ai_overlay.scorecard_explanation }}
+{% else -%}
+*AI explanation of scorecard not available.*
+{% endif %}
+
+### AI TP/FP Likelihood Assessment
+{% if ai_overlay.tp_fp_likelihood -%}
+> **AI Assessment:** **{{ ai_overlay.tp_fp_likelihood.value.upper().replace('_', ' ') }}**
+
+**Rationale:** {{ ai_overlay.tp_fp_rationale if ai_overlay.tp_fp_rationale else "Not provided" }}
+
+{% if ai_overlay.tp_fp_evidence_citations and ai_overlay.tp_fp_evidence_citations|length > 0 -%}
+**Evidence Citations:**
+{% for citation in ai_overlay.tp_fp_evidence_citations -%}
+- {{ citation }}
+{% endfor %}
+{% endif %}
+{% else -%}
+*AI TP/FP assessment not available.*
+{% endif %}
+
+### AI Hypotheses & Decision Checklist
+{% if ai_overlay.hypotheses and ai_overlay.hypotheses|length > 0 -%}
+**Hypotheses to Consider:**
+{% for hypothesis in ai_overlay.hypotheses -%}
+- {{ hypothesis }}
+{% endfor %}
+{% endif %}
+
+{% if ai_overlay.decision_checklist and ai_overlay.decision_checklist|length > 0 -%}
+**To Confirm TP vs FP, Verify:**
+{% for item in ai_overlay.decision_checklist -%}
+- [ ] {{ item }}
+{% endfor %}
+{% else -%}
+*No decision checklist available.*
+{% endif %}
+
+### AI Suggested Next Checks
+{% if ai_overlay.next_checks and ai_overlay.next_checks|length > 0 -%}
+| Query Template | Description | Target System | Parameters |
+|----------------|-------------|---------------|------------|
+{% for check in ai_overlay.next_checks -%}
+| {{ check.query_template_id }} | {{ check.description }} | {{ check.target_system }} | {% for k, v in check.parameters.items() %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %} |
+{% endfor %}
+
+{% for check in ai_overlay.next_checks %}
+<details>
+<summary>▶ {{ check.query_template_id }}: {{ check.description }}</summary>
+
+**Target System:** {{ check.target_system }}
+**Parameters:**
+{% for k, v in check.parameters.items() -%}
+- `{{ k }}`: {{ v }}
+{% endfor %}
+</details>
+{% endfor %}
+{% else -%}
+*No suggested next checks available.*
+{% endif %}
+
+### AI Similar Cases Analysis
+{% if ai_overlay.similar_case_narratives and ai_overlay.similar_case_narratives|length > 0 -%}
+{% for narrative in ai_overlay.similar_case_narratives %}
+#### {{ loop.index }}. {{ narrative.case_id }} (Similarity: {{ "%.0f"|format(narrative.similarity_score * 100) }}%)
+
+**Shared Traits:**
+{% for trait in narrative.shared_traits -%}
+- {{ trait }}
+{% endfor %}
+
+**Resolution:** {{ narrative.resolution_summary if narrative.resolution_summary else "N/A" }}
+
+**Why Relevant:** {{ narrative.relevance_explanation if narrative.relevance_explanation else "N/A" }}
+
+{% endfor %}
+{% else -%}
+*No AI similar case narratives available.*
+{% endif %}
+
+{% if ai_overlay.model_version or ai_overlay.generation_timestamp -%}
+---
+*AI Analysis generated by {{ ai_overlay.model_version if ai_overlay.model_version else "unknown model" }}{% if ai_overlay.generation_timestamp %} at {{ ai_overlay.generation_timestamp }}{% endif %}*
+{% endif %}
+
+{% endif %}
+
+{# ============================================================================
+1) SUMMARY (answers: what is it + why it matters in plain language)
+============================================================================ #}
+---
+
+## 1. Summary (SOC + Stakeholders)
+
+> **{{ signal.title }}** ({{ signal.signal_type.value }}) triaged as **{{ classification.label.value.upper() }}** with **{{ "%.0f"|format(classification.confidence * 100) }}%** confidence.
+
+- **What we started with:** {{ signal.signal_type.value }} from {{ signal.source.system }}.
+- **Description:** {{ signal.description }}
+- **Why it matters if true:** Potential security incident requiring investigation and response.
+- **Current stance:** {{ classification.label.value.upper() }}.
+
+{# ============================================================================
+2) ACTION PLAN (answers: what to do next)
+============================================================================ #}
+---
+
+## 2. Action Plan (SOC Runbook-Oriented)
+
+| # | Action | Priority | Type | Source | Automation |
+|---|--------|----------|------|--------|------------|
+{% if actions and actions|length > 0 -%}
+{% for action in actions -%}
+| {{ loop.index }} | {{ action.title }} | P{{ action.priority }} | {{ action.action_type.value }} | {{ action.source }} | {{ "Yes" if action.automation_available else "No" }} |
+{% endfor -%}
+{% else -%}
+| 1 | Review and validate signal | P1 | investigate | template | No |
+{% endif %}
+
+### Detailed Action Steps
+
+{% if actions and actions|length > 0 -%}
+{% for action in actions %}
+#### {{ loop.index }}. {{ action.title }} (Priority {{ action.priority }})
+
+**Type:** {{ action.action_type.value }}
+**Confidence:** {{ "%.0f"|format(action.confidence * 100) }}%
+**Source:** {{ action.source }}
+{% if action.estimated_effort -%}
+**Estimated Effort:** {{ action.estimated_effort }}
+{% endif -%}
+**Automation Available:** {{ "Yes" if action.automation_available else "No" }}
+
+{{ action.description }}
+
+**Reasoning:** {{ action.reasoning }}
+
+**Steps:**
+{% for step in action.steps %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+
+{% endfor %}
+{% else -%}
+*No specific actions generated. Follow standard triage procedures.*
+{% endif %}
+
+**Branch Guidance:**
+- **If TRUE POSITIVE:** contain + scope + escalate per runbook.
+- **If FALSE POSITIVE:** document justification and propose tuning/suppression with evidence.
+
+{# ============================================================================
+3) NORMALIZED SIGNAL CONTEXT (answers: what entities/IOCs/CVEs we extracted)
+============================================================================ #}
+---
+
+## 3. Normalized Signal Context
+
+### 3.1 Signal Identity
+- **Signal ID:** {{ signal.signal_id }}
+- **Signal Type:** {{ signal.signal_type.value }}
+{% if signal.source.rule_id -%}
+- **Rule ID:** {{ signal.source.rule_id }}
+{% endif -%}
+{% if signal.source.rule_name -%}
+- **Rule Name:** {{ signal.source.rule_name }}
+{% endif %}
+
+### 3.2 Entities
+{% if signal.entities and signal.entities|length > 0 -%}
+| Entity Type | Values |
+|-------------|--------|
+{% for entity_type, entity_values in signal.entities.items() -%}
+| {{ entity_type }} | {{ entity_values|join(', ') }} |
+{% endfor -%}
+{% else -%}
+- **Entities:** None extracted
+{% endif %}
+
+### 3.3 Indicators (IOCs)
+{% if signal.indicators and signal.indicators|length > 0 -%}
+| Indicator Type | Value |
+|----------------|-------|
+{% for ind_type, ind_value in signal.indicators.items() -%}
+| {{ ind_type }} | {{ ind_value }} |
+{% endfor -%}
+{% else -%}
+- **Indicators:** None
+{% endif %}
+
+### 3.4 Tags
+{% if signal.tags and signal.tags|length > 0 -%}
+{{ signal.tags|join(', ') }}
+{% else -%}
+- **Tags:** None
+{% endif %}
+
+{# ============================================================================
+4) ENRICHMENT RESULTS (answers: what additional context was gathered)
+============================================================================ #}
+---
+
+## 4. Enrichment Results
+
+{% if enrichments and enrichments|length > 0 -%}
+{% for adapter_name, enrichment in enrichments.items() %}
+### {{ adapter_name.upper() }} ({{ enrichment.status.value }})
+
+{% if enrichment.status.value == "success" -%}
+{% if enrichment.duration_ms -%}
+*Duration: {{ "%.2f"|format(enrichment.duration_ms) }}ms*
+{% endif %}
+
+{% if enrichment.data -%}
+**Key Findings:**
+{% for key, value in enrichment.data.items() -%}
+- **{{ key }}:** {{ value }}
+{% endfor %}
+{% else -%}
+*No additional data returned.*
+{% endif %}
+{% else -%}
+**Status:** {{ enrichment.status.value }}
+{% if enrichment.error -%}
+**Error:** {{ enrichment.error }}
+{% endif %}
+{% endif %}
+
+{% endfor %}
+{% else -%}
+*No enrichment data available.*
+{% endif %}
+
+{# ============================================================================
+5) CLASSIFICATION DETAILS (answers: why we decided this)
+============================================================================ #}
+---
+
+## 5. Triage Assessment
+
+### 5.1 Classification Result
+- **Disposition:** {{ classification.label.value.upper() }}
+- **Confidence:** {{ "%.0f"|format(classification.confidence * 100) }}%
+
+### 5.2 Classification Reasoning
+{% if classification.reasoning and classification.reasoning|length > 0 -%}
+{% for reason in classification.reasoning -%}
+- {{ reason }}
+{% endfor %}
+{% else -%}
+- Classification based on available evidence.
+{% endif %}
+
+### 5.3 Contributing Factors
+{% if classification.factors and classification.factors|length > 0 -%}
+| Factor | Score |
+|--------|-------|
+{% for factor, score in classification.factors.items() -%}
+| {{ factor }} | {{ "%.2f"|format(score) }} |
+{% endfor %}
+{% else -%}
+*No contributing factors recorded.*
+{% endif %}
+
+{# ============================================================================
+6) FORECAST ANALYSIS (answers: is this rising? what's expected next?)
+============================================================================ #}
+---
+
+## 6. Trend & Forecast Analysis
+
+{% if forecast_data and forecast_data.forecast_available -%}
+### 6.1 ETS Forecast Results
+- **Forecast Available:** Yes
+- **Signal Type:** {{ forecast_data.signal_type if forecast_data.signal_type else "N/A" }}
+- **Current Value:** {{ forecast_data.current_value }}
+- **Forecast Value:** {{ "%.2f"|format(forecast_data.forecast) }}
+- **Anomaly Score:** {{ "%.2f"|format(forecast_data.anomaly_score) }}
+- **Exceeds Threshold:** {{ "Yes" if forecast_data.exceeds_threshold else "No" }}
+
+### 6.2 Forecast Horizons
+{% if forecast_data.forecast_horizons -%}
+| Horizon | Forecast |
+|---------|----------|
+{% for horizon, value in forecast_data.forecast_horizons.items() -%}
+| {{ horizon }} | {{ "%.2f"|format(value) }} |
+{% endfor %}
+{% endif %}
+
+### 6.3 Backtest Reliability
+- **Backtest MAPE:** {{ "%.2f"|format(forecast_data.backtest_mape) }}%
+- **Backtest RMSE:** {{ "%.2f"|format(forecast_data.backtest_rmse) if forecast_data.backtest_rmse else "N/A" }}
+- **Confidence:** {{ "%.0f"|format(forecast_data.confidence * 100) }}%
+
+{% if forecast_data.exceeds_threshold -%}
+> ⚠️ **ALERT:** Current value exceeds forecasted threshold. This may indicate anomalous activity.
+{% endif %}
+
+{% else -%}
+- **Forecasting:** {{ forecast_data.reason if forecast_data and forecast_data.reason else "Disabled or insufficient data" }}
+{% if forecast_data and forecast_data.data_points is defined -%}
+- **Data Points Available:** {{ forecast_data.data_points }}
+{% endif %}
+{% endif %}
+
+{# ============================================================================
+7) SIMILAR CASES (answers: have we seen this before? what worked?)
+============================================================================ #}
+---
+
+## 7. Similar Cases (Historical)
+
+{% if similar_cases and similar_cases|length > 0 -%}
+| Case ID | Similarity Score |
+|---------|------------------|
+{% for case in similar_cases -%}
+| {{ case[0] }} | {{ "%.2f"|format(case[1]) }} |
+{% endfor %}
+
+{% if classification.similar_cases and classification.similar_cases|length > 0 -%}
+### Referenced Cases
+{% for case_id in classification.similar_cases -%}
+- {{ case_id }}
+{% endfor %}
+{% endif %}
+
+{% else -%}
+*No similar cases found in the configured lookback window.*
+{% endif %}
+
+{# ============================================================================
+8) DATA QUALITY & GAPS (answers: what's missing so we don't overclaim)
+============================================================================ #}
+---
+
+## 8. Data Quality & Gaps
+
+### Enrichment Status Summary
+{% if enrichments and enrichments|length > 0 -%}
+| Adapter | Status | Duration |
+|---------|--------|----------|
+{% for adapter_name, enrichment in enrichments.items() -%}
+| {{ adapter_name }} | {{ enrichment.status.value }} | {{ "%.2f ms"|format(enrichment.duration_ms) if enrichment.duration_ms else "N/A" }} |
+{% endfor %}
+{% else -%}
+*No enrichment attempts recorded.*
+{% endif %}
+
+### Known Limitations
+- Data freshness depends on adapter response times and caching policies.
+- Classification confidence may be affected by missing enrichment data.
+- Forecast accuracy depends on historical data availability and quality.
+
+{# ============================================================================
+APPENDIX (raw signal payload for auditability)
+============================================================================ #}
+---
+
+## Appendix A. Raw Signal Payload
+
+```json
+{
+  "signal_id": "{{ signal.signal_id }}",
+  "signal_type": "{{ signal.signal_type.value }}",
+  "title": "{{ signal.title }}",
+  "description": "{{ signal.description }}",
+  "severity": "{{ signal.severity }}",
+  "timestamp": "{{ signal.timestamp.isoformat() }}",
+  "source": {
+    "system": "{{ signal.source.system }}"{% if signal.source.rule_id %},
+    "rule_id": "{{ signal.source.rule_id }}"{% endif %}{% if signal.source.rule_name %},
+    "rule_name": "{{ signal.source.rule_name }}"{% endif %}
+  },
+  "entities": {{ signal.entities|tojson if signal.entities else "{}" }},
+  "tags": {{ signal.tags|tojson if signal.tags else "[]" }}
+}
+```
+
+---
+
+## Summary
+
+This triage report was automatically generated for signal **{{ signal.signal_id }}**.
+
+| Metric | Value |
+|--------|-------|
+| Classification | {{ classification.label.value.upper() }} |
+| Confidence | {{ "%.0f"|format(classification.confidence * 100) }}% |
+| Severity | {{ signal.severity }} |
+| Recommended Actions | {{ actions|length if actions else 0 }} |
+| Enrichments Completed | {{ enrichments|length if enrichments else 0 }} |
+
+*Generated by SOC Triage Bot*

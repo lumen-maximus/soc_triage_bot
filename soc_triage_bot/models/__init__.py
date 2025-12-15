@@ -1,9 +1,10 @@
 """Data models for the SOC triage bot."""
 
-from .signal import Signal, SignalType, SignalSource
-from .enrichment import EnrichmentResult, EnrichmentStatus
-from .classification import Classification, ClassificationLabel
 from .action import Action, ActionType
+from .ai_overlay import AINextCheck, AIOverlay, AISimilarCaseNarrative, TPFPLikelihood
+from .classification import Classification, ClassificationLabel
+from .enrichment import EnrichmentResult, EnrichmentStatus
+from .signal import Signal, SignalSource, SignalType
 
 __all__ = [
     "Signal",
@@ -15,4 +16,9 @@ __all__ = [
     "ClassificationLabel",
     "Action",
     "ActionType",
+    # AI Overlay (future LLM integration)
+    "AIOverlay",
+    "AINextCheck",
+    "AISimilarCaseNarrative",
+    "TPFPLikelihood",
 ]
