@@ -29,15 +29,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from soc_triage_bot.models import Signal, SignalSource, SignalType
-from soc_triage_bot.models.ai_overlay import (
-    AINextCheck,
-    AIOverlay,
-    AISimilarCaseNarrative,
-    AIStatement,
-    AITrackInterpretation,
-    StatementType,
-    TPFPLikelihood,
-)
 from soc_triage_bot.models.signal import (
     ArtifactContext,
     DetectionContext,
@@ -956,68 +947,508 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
 
 
 async def run_demo():
-    """Execute the full triage demo with all sections populated."""
+    """Execute the full triage demo showing ALL services in the pipeline."""
     # Display the SOC Agent banner
-    show_banner(subtitle="Full Pipeline Demo (All 13 Sections)")
+    show_banner(subtitle="Full Pipeline Demo (All Services)")
 
-    print(f"  {c('▸', Colors.TEAL)} {c('Demo Execution', Colors.BOLD + Colors.WHITE)}")
-    print(c("─" * 60, Colors.DIM))
+    print(
+        f"  {c('▸', Colors.TEAL)} {c('Service Pipeline Execution', Colors.BOLD + Colors.WHITE)}"
+    )
+    print(c("─" * 70, Colors.DIM))
 
-    # Create signal
-    print("\n[1/4] Creating sample signal with full context...")
+    # =========================================================================
+    # SERVICE INVENTORY
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.MAGENTA)}")
+    print(f"{c('SOC TRIAGE BOT - SERVICE INVENTORY', Colors.BOLD + Colors.MAGENTA)}")
+    print(f"{c('━' * 70, Colors.MAGENTA)}")
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('│', Colors.DIM)} {c('Adapters (Data Sources):', Colors.YELLOW)}")
+    print(
+        f"{c('│', Colors.DIM)}   • {c('SIEMAdapter', Colors.WHITE)}          - SIEM alert ingestion & correlation"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('ThreatIntelAdapter', Colors.WHITE)}   - VirusTotal, OTX, AbuseIPDB"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('CMDBAdapter', Colors.WHITE)}          - Asset context & ownership"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('EDRAdapter', Colors.WHITE)}           - Endpoint telemetry"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('VulnerabilityAdapter', Colors.WHITE)} - CVE/vulnerability data"
+    )
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('│', Colors.DIM)} {c('Core Services:', Colors.YELLOW)}")
+    print(
+        f"{c('│', Colors.DIM)}   • {c('TriageService', Colors.WHITE)}        - Main orchestrator"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('EnrichmentService', Colors.WHITE)}    - Multi-source enrichment"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('ClassificationService', Colors.WHITE)} - TP/FP scoring engine"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('ForecastingService', Colors.WHITE)}   - Multi-track ETS analysis"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('SimilarityService', Colors.WHITE)}    - Vector search for cases"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('CaseArtifactHarvester', Colors.WHITE)} - Extract SOAR artifacts"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('ActionProposalService', Colors.WHITE)} - Generate recommendations"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('RunbookRegistry', Colors.WHITE)}      - Match playbooks/runbooks"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('AIService', Colors.WHITE)}            - LLM overlay generation"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('ReportService', Colors.WHITE)}        - Jinja2 markdown render"
+    )
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('└─', Colors.DIM)} {c('10 services ready', Colors.GREEN)}")
+
+    # =========================================================================
+    # STAGE 1: SIGNAL INGESTION (SIEMAdapter)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 1: SIGNAL INGESTION', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} adapters/{c('SIEMAdapter', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(f"{c('│', Colors.DIM)} Ingesting raw alert from Splunk...")
+
     signal = create_sample_signal()
-    print(f"   ✓ Signal ID: {signal.signal_id}")
-    print(f"   ✓ Type: {signal.signal_type.value}")
-    print(f"   ✓ Rule: {signal.source.rule_name}")
 
-    # Create full triage report with all sections
-    print("\n[2/4] Building complete TriageReport with all 13 sections...")
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('│', Colors.DIM)} {c('Signal Parsed:', Colors.YELLOW)}")
+    print(f"{c('│', Colors.DIM)}   • ID: {c(signal.signal_id, Colors.WHITE)}")
+    print(
+        f"{c('│', Colors.DIM)}   • Type: {c(signal.signal_type.value.upper(), Colors.YELLOW)}"
+    )
+    print(f"{c('│', Colors.DIM)}   • Source: {c(signal.source.system, Colors.WHITE)}")
+    print(
+        f"{c('│', Colors.DIM)}   • Rule: {c(signal.source.rule_name or 'N/A', Colors.WHITE)}"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   • Severity: {c(signal.severity.upper(), Colors.RED)}"
+    )
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('└─', Colors.DIM)} {c('✓ SIEMAdapter.ingest() complete', Colors.GREEN)}")
+
+    # =========================================================================
+    # STAGE 2: ENRICHMENT (EnrichmentService + Adapters)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 2: ENRICHMENT', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('EnrichmentService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(f"{c('│', Colors.DIM)} Orchestrating multi-source enrichment...")
+    print(f"{c('│', Colors.DIM)}")
+
+    # 2a. Threat Intel
+    print(f"{c('│', Colors.DIM)} {c('→ ThreatIntelAdapter.lookup()', Colors.YELLOW)}")
+    await asyncio.sleep(0.2)
+    print(
+        f"{c('│', Colors.DIM)}   IP 10.0.0.5: {c('MALICIOUS', Colors.RED)} (VT 48/92, AbuseIPDB 100%)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   Domain: {c('MALICIOUS', Colors.RED)} (DGA pattern, 5d old)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   Hash: {c('MALICIOUS', Colors.RED)} (Cobalt Strike, 42/72)"
+    )
+
+    # 2b. CMDB
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('→ CMDBAdapter.get_asset_context()', Colors.YELLOW)}"
+    )
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   Host: WORKSTATION-042 | Owner: jsmith | Criticality: MEDIUM"
+    )
+
+    # 2c. Vulnerability
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('→ VulnerabilityAdapter.get_host_vulns()', Colors.YELLOW)}"
+    )
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   {c('CVE-2024-1234', Colors.RED)}: AMSI Bypass (HIGH, exploited)"
+    )
+    print(f"{c('│', Colors.DIM)}   CVE-2023-9876: Print Spooler (MEDIUM)")
+
+    # 2d. EDR
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('│', Colors.DIM)} {c('→ EDRAdapter.get_telemetry()', Colors.YELLOW)}")
+    await asyncio.sleep(0.15)
+    print(f"{c('│', Colors.DIM)}   Process: explorer.exe → powershell.exe -enc ...")
+    print(
+        f"{c('│', Colors.DIM)}   {c('lsass.exe access detected', Colors.RED)} (Mimikatz pattern)"
+    )
+
+    # 2e. SIEM Correlation
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('│', Colors.DIM)} {c('→ SIEMAdapter.correlate()', Colors.YELLOW)}")
+    await asyncio.sleep(0.15)
+    print(f"{c('│', Colors.DIM)}   47 DNS queries to C2 domain (last 24h)")
+    print(f"{c('│', Colors.DIM)}   3 hosts involved in lateral movement")
+
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ EnrichmentService.enrich() complete', Colors.GREEN)}"
+    )
+
+    # Build the triage report with all enriched data
     triage_report = create_full_triage_report(signal)
-    print("   ✓ r.signal (Normalized Signal)")
-    print("   ✓ r.meta (Report Metadata)")
-    print("   ✓ r.ctx (Signal Context) - Section 3")
-    print("   ✓ r.classification - Sections 9, Decision Banner")
-    print("   ✓ r.forecast (Multi-track ETS) - Section 7")
-    print("   ✓ r.enrich.local_sightings - Section 4.1")
-    print("   ✓ r.enrich.scope - Section 4.2")
-    print("   ✓ r.enrich.threat_intel - Section 5")
-    print("   ✓ r.enrich.asset_context - Section 6.1")
-    print("   ✓ r.enrich.host_vulns - Section 6.2")
-    print("   ✓ r.enrich.env_exposure - Section 6.3")
-    print("   ✓ r.enrich.related_events - Section 8")
-    print("   ✓ r.enrich.notes - Section 13")
-    print("   ✓ r.similar_cases - Section 10")
-    print("   ✓ r.recommendations - Section 2")
-    print("   ✓ r.exec (Executive Summary) - Section 12")
 
-    # Create AI overlay using AIService
-    print("\n[3/4] Creating AI overlay for all sections...")
-    ai_service = AIService.from_settings()  # Uses mock provider by default
+    # =========================================================================
+    # STAGE 3: FORECASTING (ForecastingService)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 3: FORECASTING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ForecastingService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(f"{c('│', Colors.DIM)} Running multi-track ETS models...")
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ ForecastingService.forecast_track()', Colors.YELLOW)} Track A (Rule)"
+    )
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   Model: ETS(A,Ad,N) | Status: {c('🔴 SPIKE 5.2x', Colors.RED)}"
+    )
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ ForecastingService.forecast_track()', Colors.YELLOW)} Track B (IOC)"
+    )
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   Model: ETS(A,N,N) | Status: {c('🟠 ELEVATED 2.8x', Colors.YELLOW)}"
+    )
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ ForecastingService.forecast_track()', Colors.YELLOW)} Track C (Entity)"
+    )
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   Model: ETS(A,Ad,A) | Status: {c('🔴 SPIKE 4.1x', Colors.RED)}"
+    )
+
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Cross-Track:', Colors.RED + Colors.BOLD)} Triple-spike (95% TP correlation)"
+    )
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ ForecastingService.run_all_tracks() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 4: SIMILARITY SEARCH (SimilarityService)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 4: SIMILAR CASE RETRIEVAL', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('SimilarityService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(f"{c('│', Colors.DIM)} Vector search over historical cases...")
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ SimilarityService.find_similar()', Colors.YELLOW)}"
+    )
+    await asyncio.sleep(0.2)
+    print(
+        f"{c('│', Colors.DIM)}   CASE-2024-0892: {c('92% match', Colors.GREEN)} (TP, same C2)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   CASE-2024-0756: {c('78% match', Colors.GREEN)} (TP, Cobalt Strike)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   CASE-2024-0634: {c('65% match', Colors.YELLOW)} (FP, dev tool)"
+    )
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ SimilarityService.find_similar() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 5: CLASSIFICATION (ClassificationService)
+    # =========================================================================
+    # NOTE: Classification MUST happen before action proposal - we need to
+    # know TP/FP likelihood before recommending response actions
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 5: CLASSIFICATION', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ClassificationService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(
+        f"{c('│', Colors.DIM)} Computing TP/FP likelihood from enrichments + forecast + similar cases..."
+    )
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ ClassificationService.classify_extended()', Colors.YELLOW)}"
+    )
+    await asyncio.sleep(0.15)
+    print(f"{c('│', Colors.DIM)}   Inputs: enrichments, similar_cases, forecast_bundle")
+    print(
+        f"{c('│', Colors.DIM)}   TI Score: {c('+35%', Colors.GREEN)} | Pattern: {c('+25%', Colors.GREEN)}"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   ETS: {c('+15%', Colors.GREEN)} | Similar: {c('+12%', Colors.GREEN)} | FP: {c('-13%', Colors.YELLOW)}"
+    )
+    print(f"{c('│', Colors.DIM)}")
+    print(f"{c('│', Colors.DIM)}   ┌──────────────────────────────────┐")
+    print(
+        f"{c('│', Colors.DIM)}   │  {c('TRUE POSITIVE', Colors.RED + Colors.BOLD)} @ {c('87%', Colors.WHITE)} likelihood │"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   │  Severity: {c('HIGH', Colors.RED)} | Confidence: {c('HIGH', Colors.GREEN)} │"
+    )
+    print(f"{c('│', Colors.DIM)}   └──────────────────────────────────┘")
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ ClassificationService.classify_extended() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 6: CASE ARTIFACT HARVESTING (CaseArtifactHarvester)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 6: SOAR ARTIFACT HARVESTING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('CaseArtifactHarvester', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(f"{c('│', Colors.DIM)} Extracting proven actions from similar TP cases...")
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ CaseArtifactHarvester.harvest()', Colors.YELLOW)} CASE-2024-0892"
+    )
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   Extracted: EDR isolation, credential reset, IOC blocking"
+    )
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ CaseArtifactHarvester.harvest()', Colors.YELLOW)} CASE-2024-0756"
+    )
+    await asyncio.sleep(0.15)
+    print(f"{c('│', Colors.DIM)}   Extracted: Network containment, forensic imaging")
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ CaseArtifactHarvester.harvest_all() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 7: ACTION PROPOSAL (ActionProposalService)
+    # =========================================================================
+    # NOTE: Actions are proposed AFTER classification - severity/TP likelihood
+    # determines urgency (P1 vs P4) and action scope
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 7: ACTION PROPOSAL', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ActionProposalService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(
+        f"{c('│', Colors.DIM)} Generating prioritized recommendations based on classification..."
+    )
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ ActionProposalService.propose_actions()', Colors.YELLOW)}"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   Inputs: signal, classification, enrichments, similar_cases"
+    )
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)}: Isolate WORKSTATION-042 via EDR"
+    )
+    print(f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)}: Reset jsmith credentials")
+    print(f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)}: Block IOCs at perimeter")
+    print(f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)}: Investigate lateral hosts")
+    print(f"{c('│', Colors.DIM)}   {c('P3', Colors.GREEN)}: Forensic imaging")
+    print(f"{c('│', Colors.DIM)}   {c('P4', Colors.DIM)}: Patch CVE-2024-1234")
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ ActionProposalService.propose_actions() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 8: RUNBOOK MATCHING (RunbookRegistry)
+    # =========================================================================
+    # NOTE: Runbooks matched after classification - threat type informs which
+    # playbooks are relevant
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 8: RUNBOOK MATCHING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('RunbookRegistry', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(
+        f"{c('│', Colors.DIM)} Matching signal + classification to playbooks/runbooks..."
+    )
+    print(f"{c('│', Colors.DIM)}")
+
+    print(f"{c('│', Colors.DIM)} {c('→ RunbookRegistry.match()', Colors.YELLOW)}")
+    await asyncio.sleep(0.15)
+    print(
+        f"{c('│', Colors.DIM)}   Matched: {c('malware_containment.yaml', Colors.WHITE)} (Cobalt Strike)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   Matched: {c('phishing_response.yaml', Colors.WHITE)} (Initial access)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   Playbook: {c('ransomware_ir.yaml', Colors.WHITE)} (Lateral movement)"
+    )
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ RunbookRegistry.match() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 9: AI OVERLAY (AIService)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 9: AI OVERLAY GENERATION', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('AIService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(f"{c('│', Colors.DIM)} Provider: MockProvider | Model: GPT-4o")
+    print(f"{c('│', Colors.DIM)}")
+
+    ai_service = AIService.from_settings()
+
+    print(f"{c('│', Colors.DIM)} {c('→ AIService.generate_overlay()', Colors.YELLOW)}")
+    sections = [
+        "Decision Banner rationale",
+        "Executive summary (4 statements)",
+        "Next checks (3 queries)",
+        "Evidence citations (E-001..E-005)",
+        "Trend interpretation",
+        "Timeline narrative",
+        "Scorecard explanation",
+        "Similar case narratives",
+        "Closure guidance",
+        "Business impact",
+        "Data quality observations",
+    ]
+    for s in sections:
+        await asyncio.sleep(0.08)
+        print(f"{c('│', Colors.DIM)}   {c('→', Colors.GREEN)} {s}")
+
     ai_overlay = ai_service.create_mock_overlay(
         triage_report=triage_report, signal=signal
     )
-    print("   ✓ Decision Banner AI assessment")
-    print("   ✓ Section 1 AI executive summary")
-    print("   ✓ Section 2 AI next checks")
-    print("   ✓ Section 3 AI context interpretation")
-    print("   ✓ Section 4 AI scope interpretation")
-    print("   ✓ Section 5 AI evidence citations")
-    print("   ✓ Section 6 AI exposure assessment")
-    print("   ✓ Section 7 AI trend interpretation")
-    print("   ✓ Section 8 AI timeline narrative")
-    print("   ✓ Section 9 AI scorecard explanation")
-    print("   ✓ Section 10 AI similar case narratives")
-    print("   ✓ Section 11 AI closure guidance")
-    print("   ✓ Section 12 AI business impact summary")
-    print("   ✓ Section 13 AI data quality observations")
 
-    # Generate report
-    print("\n[4/4] Rendering full markdown report...")
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('│', Colors.DIM)}   AI Assessment: {c('LIKELY TRUE POSITIVE', Colors.RED)}"
+    )
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ AIService.generate_overlay() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 10: REPORT RENDERING (ReportService)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 10: REPORT RENDERING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ReportService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(f"{c('│', Colors.DIM)} Template: triage_report.md.j2")
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ ReportService.generate_report()', Colors.YELLOW)}"
+    )
+    await asyncio.sleep(0.2)
+
     report_service = ReportService()
     report = report_service.generate_report(triage_report, ai_overlay)
-    print(f"   ✓ Report generated: {len(report.splitlines())} lines")
 
-    # Save outputs
+    print(f"{c('│', Colors.DIM)}   Rendered: Header + Decision Banner")
+    print(f"{c('│', Colors.DIM)}   Rendered: §1-§13 (all sections)")
+    print(f"{c('│', Colors.DIM)}   Rendered: Appendix (raw payload)")
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('│', Colors.DIM)}   Output: {c(str(len(report.splitlines())) + ' lines', Colors.WHITE)} of markdown"
+    )
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ ReportService.generate_report() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # PIPELINE COMPLETE
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.GREEN)}")
+    print(f"{c('PIPELINE COMPLETE', Colors.BOLD + Colors.GREEN)}")
+    print(f"{c('━' * 70, Colors.GREEN)}")
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Services Invoked:', Colors.YELLOW)} 10 (in logical order)"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   1. SIEMAdapter.ingest()              → Signal ingestion"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   2. EnrichmentService.enrich()        → Context from 5 adapters"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   3. ForecastingService.run_all_tracks()→ ETS anomaly detection"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   4. SimilarityService.find_similar()  → Historical case matching"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   5. ClassificationService.classify()  → TP/FP determination"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   6. CaseArtifactHarvester.harvest()   → Extract proven actions"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   7. ActionProposalService.propose()   → Prioritized recommendations"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   8. RunbookRegistry.match()           → Playbook selection"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   9. AIService.generate_overlay()      → LLM enhancement"
+    )
+    print(
+        f"{c('│', Colors.DIM)}  10. ReportService.generate_report()   → Final markdown"
+    )
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ All services executed successfully', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # SAVE OUTPUTS
+    # =========================================================================
     output_dir = Path(__file__).parent / "soc_triage_bot" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1097,11 +1528,15 @@ async def run_demo():
     print("  ✓ §13 Data Quality: 3 data gaps, 3 assumptions")
     print("  ✓ Appendix: Raw signal payload")
 
-    # Show full report
+    # Show report preview (first 50 lines) instead of full dump
     print("\n" + "=" * 80)
-    print("FULL TRIAGE REPORT")
+    print("REPORT PREVIEW (first 50 lines)")
     print("=" * 80)
-    print(report)
+    report_lines = report.splitlines()
+    for line in report_lines[:50]:
+        print(line)
+    print("\n... [truncated - see full report in output file] ...")
+    print(f"\n📄 Full report ({len(report_lines)} lines): {report_path}")
 
 
 if __name__ == "__main__":

@@ -28,12 +28,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 from ..models import (
     Action,
     ActionType,
-    Classification,
     ClassificationLabel,
     EnrichmentResult,
     Signal,
 )
-from ..models.triage_report import SimilarCase
+from ..models.triage_report import ClassificationResult, SimilarCase
 
 # Lazy imports to avoid circular dependencies
 if TYPE_CHECKING:
@@ -617,10 +616,20 @@ class ActionProposalService:
         type_templates = self.templates.get(signal.signal_type.value, [])
         return global_templates + type_templates
 
+    def _get_confidence_score(self, classification: ClassificationResult) -> float:
+        """Get numeric confidence score from either Classification or ClassificationResult.
+
+        Forward-compatible: handles both legacy and new models.
+        """
+        if isinstance(classification, ClassificationResult):
+            return classification.confidence_score  # Uses tp_likelihood
+        else:
+            return classification.confidence  # Legacy float field
+
     def propose_actions(
         self,
         signal: Signal,
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
         similar_cases: Optional[List[Tuple[str, float, str]]] = None,
         similar_cases_models: Optional[List[Any]] = None,
@@ -638,7 +647,7 @@ class ActionProposalService:
 
         Args:
             signal: The signal
-            classification: Classification result
+            classification: Classification result (accepts Classification or ClassificationResult)
             enrichments: Enrichment results
             similar_cases: Optional list of (case_id, similarity, outcome) tuples
             similar_cases_models: Optional list of SimilarCase model objects with
@@ -714,7 +723,7 @@ class ActionProposalService:
     def _generate_from_seeded_runbooks(
         self,
         signal: Signal,
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
     ) -> List[Action]:
         """Generate actions from seeded runbooks/playbooks (governed templates).
@@ -730,7 +739,7 @@ class ActionProposalService:
         applicable_runbooks = self._runbook_registry.find_applicable_runbooks(
             signal=signal,
             classification_label=classification.label,
-            min_confidence=classification.confidence,
+            min_confidence=self._get_confidence_score(classification),
         )
 
         for runbook in applicable_runbooks:
@@ -772,7 +781,7 @@ class ActionProposalService:
     def _generate_from_templates(
         self,
         signal: Signal,
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
     ) -> List[Action]:
         """Generate actions from signal-type-keyed templates."""
@@ -790,7 +799,7 @@ class ActionProposalService:
         self,
         template: Dict[str, Any],
         signal: Signal,
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
     ) -> bool:
         """Check if template conditions are met."""
@@ -807,7 +816,8 @@ class ActionProposalService:
         # Check confidence thresholds
         min_confidence = conditions.get("min_confidence", 0)
         max_confidence = conditions.get("max_confidence", 1.0)
-        if not (min_confidence <= classification.confidence <= max_confidence):
+        confidence_score = self._get_confidence_score(classification)
+        if not (min_confidence <= confidence_score <= max_confidence):
             return False
 
         # Check required entities
@@ -830,7 +840,10 @@ class ActionProposalService:
         return True
 
     def _instantiate_template(
-        self, template: Dict[str, Any], signal: Signal, classification: Classification
+        self,
+        template: Dict[str, Any],
+        signal: Signal,
+        classification: ClassificationResult,
     ) -> Action:
         """Create action instance from template."""
         # Format strings with entity values
@@ -853,7 +866,7 @@ class ActionProposalService:
             steps=template["steps"],
             reasoning=f"Based on classification: {classification.label.value}",
             source="template",
-            confidence=classification.confidence,
+            confidence=self._get_confidence_score(classification),
             estimated_effort=template.get("estimated_effort"),
             automation_available=template.get("automation_available", False),
             related_entities=signal.entities,
@@ -862,7 +875,7 @@ class ActionProposalService:
     def _generate_learned_actions(
         self,
         signal: Signal,
-        classification: Classification,
+        classification: ClassificationResult,
         similar_cases: List[Tuple[str, float, str]],
     ) -> List[Action]:
         """Generate actions from similar historical cases.
@@ -932,7 +945,7 @@ class ActionProposalService:
         # If classification is TP with high confidence, add notification action
         if (
             classification.label == ClassificationLabel.TRUE_POSITIVE
-            and classification.confidence > 0.85
+            and self._get_confidence_score(classification) > 0.85
             and len(top_cases) >= 2
         ):
             actions.append(
@@ -963,7 +976,7 @@ class ActionProposalService:
     def _generate_contextual_actions(
         self,
         signal: Signal,
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
     ) -> List[Action]:
         """Generate parameterized contextual actions.
@@ -1226,7 +1239,7 @@ class ActionProposalService:
     def _apply_gating(
         self,
         actions: List[Action],
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
     ) -> List[Action]:
         """Apply enterprise gating to actions.
@@ -1284,7 +1297,7 @@ class ActionProposalService:
     def _evaluate_gating(
         self,
         action: Action,
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
     ) -> GatingResult:
         """Evaluate gating criteria for an action."""
@@ -1439,7 +1452,7 @@ class ActionProposalService:
     def _generate_dynamic_actions(
         self,
         signal: Signal,
-        classification: Classification,
+        classification: ClassificationResult,
         enrichments: Dict[str, EnrichmentResult],
     ) -> List[Action]:
         """Legacy method - redirects to contextual actions."""

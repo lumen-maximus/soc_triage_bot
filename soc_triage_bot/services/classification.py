@@ -1,19 +1,19 @@
 """Classification service for TP/FP determination.
 
-Extended to support multi-track forecast consumption with per-track anomaly checks.
-Generates ClassificationResult compatible with the new triage report structure.
+Supports multi-track forecast consumption with per-track anomaly checks.
+Generates ClassificationResult with MITRE mapping and structured reasoning.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from ..models import Classification, ClassificationLabel, EnrichmentResult, Signal
+from ..models import ClassificationLabel, EnrichmentResult, Signal
 from ..models.triage_report import ClassificationResult, ForecastBundle, MitreMapping
 
 
 class ClassificationService:
     """Service for deterministic TP/FP classification.
 
-    Extended for multi-track forecasting:
+    Multi-track forecasting support:
     - Consumes ForecastBundle with tracks (rule, ioc, entity)
     - Per-track anomaly scoring with weighted combination
     - Evidence ID citations in reasoning

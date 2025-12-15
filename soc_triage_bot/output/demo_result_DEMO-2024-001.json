@@ -1,7 +1,7 @@
 {
   "signal_id": "DEMO-2024-001",
   "signal_type": "siem_alert",
-  "timestamp": "2025-12-15T17:00:28.866145+00:00",
+  "timestamp": "2025-12-15T18:59:33.598976+00:00",
   "classification": {
     "disposition": "TRUE_POSITIVE",
     "tp_likelihood": 0.87,

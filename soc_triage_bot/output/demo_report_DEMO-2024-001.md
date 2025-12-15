@@ -7,8 +7,8 @@
 **Signal Source:** Splunk
 **Signal Name:** PowerShell with Base64 Encoded Command Detected
 **Category:** Execution / Defense Evasion
-**Signal Time (UTC):** 2025-12-15T17:00:28.866145+00:00Z
-**Generated (UTC):** 2025-12-15T17:00:28.866344+00:00Z
+**Signal Time (UTC):** 2025-12-15T18:59:33.598976+00:00Z
+**Generated (UTC):** 2025-12-15T18:59:34.402313+00:00Z
 **Triage Owner:** Analyst Team Alpha
 **Tool Version:** 2.0.0
 **AI Model:** GPT-4o (2024-12-14)
@@ -171,17 +171,16 @@
 
 ### 🤖 AI Context Interpretation
 
-**Extraction Confidence:** HIGH: All entities extracted from structured fields. Hostname, username, and IP addresses verified against CMDB. No ambiguity in entity relationships.
+**Extraction Confidence:** HIGH: All primary entities clearly identified from structured SIEM fields
 
 
 Signal contains high-quality structured data from Splunk SIEM alert. Primary entity (WORKSTATION-042) is clearly identified with associated user (jsmith). All three indicator types (IP, domain, hash) are present and correlated. CVEs extracted from vulnerability context are directly relevant to the attack chain.
 
 
 **Indicator Context:**
-- Domain suspicious-domain.com is a known Cobalt Strike C2 server (first seen 5 days ago)
-- IP 10.0.0.5 is part of APT29 infrastructure (confirmed by 3 TI sources)
-- Hash abc123... matches Cobalt Strike loader with process injection capability
-- Process powershell.exe with encoded command is common initial execution technique
+- IP 10.0.0.5 is external C2 infrastructure
+- Domain suspicious-domain.com is freshly registered (5 days ago)
+- Hash matches known Cobalt Strike loader variant
 
 
 
@@ -331,7 +330,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** SPIKE - 5.2x above expected. Anomalous activity detected.
 - **Confidence:** high
 #### 7.1.a Series Metadata
-- **History range:** 2025-12-08T17:00:28.867175+00:00Z → 2025-12-15T17:00:28.867175+00:00Z
+- **History range:** 2025-12-08T18:59:34.402869+00:00Z → 2025-12-15T18:59:34.402869+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 1.2%
 - **Data completeness:** COMPLETE
@@ -375,7 +374,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** ELEVATED - 2.8x above baseline. New indicator emerging.
 - **Confidence:** medium
 #### 7.2.a Series Metadata
-- **History range:** 2025-12-08T17:00:28.867175+00:00Z → 2025-12-15T17:00:28.867175+00:00Z
+- **History range:** 2025-12-08T18:59:34.402869+00:00Z → 2025-12-15T18:59:34.402869+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 3.0%
 - **Data completeness:** COMPLETE
@@ -421,7 +420,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** SPIKE - 4.1x above expected. Entity anomaly detected.
 - **Confidence:** high
 #### 7.3.a Series Metadata
-- **History range:** 2025-12-08T17:00:28.867175+00:00Z → 2025-12-15T17:00:28.867175+00:00Z
+- **History range:** 2025-12-08T18:59:34.402869+00:00Z → 2025-12-15T18:59:34.402869+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 0.0%
 - **Data completeness:** COMPLETE
@@ -482,12 +481,12 @@ Triple-track spike (Rule + IOC + Entity all elevated) is rare and historically c
 
 | Time (UTC) | Source/System | Event Summary | Relevance |
 |------------|--------------|--------------|-----------|
-| 2025-12-15T10:45:28.867175+00:00Z | DNS | First DNS query to suspicious-domain.com from WORKSTATION-042 | Initial contact with C2 infrastructure |
-| 2025-12-15T11:15:28.867175+00:00Z | Proxy | HTTPS POST to suspicious-domain.com/beacon (4.2KB payload) | Likely Cobalt Strike beacon check-in |
-| 2025-12-15T12:30:28.867175+00:00Z | EDR | explorer.exe spawned powershell.exe with encoded args | Primary detection event (this alert) |
-| 2025-12-15T13:45:28.867175+00:00Z | EDR | powershell.exe accessed lsass.exe memory (Mimikatz pattern) | Credential dumping attempt detected |
-| 2025-12-15T14:15:28.867175+00:00Z | AD | jsmith account used for RDP to SERVER-DC01 (unusual) | Potential lateral movement attempt |
-| 2025-12-15T15:30:28.867175+00:00Z | Network | SMB connection from WORKSTATION-042 to WORKSTATION-089 | Lateral movement confirmed to additional host |
+| 2025-12-15T12:44:34.402869+00:00Z | DNS | First DNS query to suspicious-domain.com from WORKSTATION-042 | Initial contact with C2 infrastructure |
+| 2025-12-15T13:14:34.402869+00:00Z | Proxy | HTTPS POST to suspicious-domain.com/beacon (4.2KB payload) | Likely Cobalt Strike beacon check-in |
+| 2025-12-15T14:29:34.402869+00:00Z | EDR | explorer.exe spawned powershell.exe with encoded args | Primary detection event (this alert) |
+| 2025-12-15T15:44:34.402869+00:00Z | EDR | powershell.exe accessed lsass.exe memory (Mimikatz pattern) | Credential dumping attempt detected |
+| 2025-12-15T16:14:34.402869+00:00Z | AD | jsmith account used for RDP to SERVER-DC01 (unusual) | Potential lateral movement attempt |
+| 2025-12-15T17:29:34.402869+00:00Z | Network | SMB connection from WORKSTATION-042 to WORKSTATION-089 | Lateral movement confirmed to additional host |
 
 
 
@@ -598,9 +597,9 @@ FP discount: -13% for developer context and elevated privileges baseline.
 
 | Case ID | Opened (UTC) | Disposition | Overlap | Key Actions Taken |
 |--------|--------------|------------|---------|------------------|
-| CASE-2024-0892 | 2025-12-03T17:00:28.867175+00:00Z | TRUE_POSITIVE | Same IOC (suspicious-domain.com) + Cobalt Strike pattern + Credential dumping | Isolated affected hosts via EDR; Reset credentials for compromised accounts; Blocked IOCs at firewall and proxy; Forensic image captured for investigation; Engaged IR team for full compromise assessment |
-| CASE-2024-0756 | 2025-11-17T17:00:28.867175+00:00Z | TRUE_POSITIVE | Cobalt Strike beacon + Lateral movement pattern | EDR containment of affected hosts; Password reset for affected accounts; IOC blocking across perimeter |
-| CASE-2024-0634 | 2025-10-31T17:00:28.867175+00:00Z | FALSE_POSITIVE | Encoded PowerShell + Developer workstation | Verified script was legitimate build tool; Added exclusion to detection rule |
+| CASE-2024-0892 | 2025-12-03T18:59:34.402869+00:00Z | TRUE_POSITIVE | Same IOC (suspicious-domain.com) + Cobalt Strike pattern + Credential dumping | Isolated affected hosts via EDR; Reset credentials for compromised accounts; Blocked IOCs at firewall and proxy; Forensic image captured for investigation; Engaged IR team for full compromise assessment |
+| CASE-2024-0756 | 2025-11-17T18:59:34.402869+00:00Z | TRUE_POSITIVE | Cobalt Strike beacon + Lateral movement pattern | EDR containment of affected hosts; Password reset for affected accounts; IOC blocking across perimeter |
+| CASE-2024-0634 | 2025-10-31T18:59:34.402869+00:00Z | FALSE_POSITIVE | Encoded PowerShell + Developer workstation | Verified script was legitimate build tool; Added exclusion to detection rule |
 
 
 
@@ -659,30 +658,33 @@ FP discount: -13% for developer context and elevated privileges baseline.
 
 ### 🤖 AI Closure Guidance
 
-Based on signal context and similar case analysis, this signal should be closed as TRUE POSITIVE if any of the following are confirmed: (1) C2 communication is verified active, (2) credential dumping artifacts are found, or (3) lateral movement is confirmed. Close as FALSE POSITIVE only if jsmith confirms intentional security testing with documented approval.
+Case can be closed as TRUE POSITIVE when:
+1. Root cause (initial access vector) is identified and documented
+2. All affected hosts are contained and remediated
+3. Compromised credentials are reset across the domain
+4. IOCs are blocked at perimeter and endpoint
+5. No evidence of ongoing C2 communication for 72+ hours
 
 
 **To Confirm TRUE POSITIVE:**
-- [ ] Verify C2 beacon traffic in proxy/firewall logs (domain: suspicious-domain.com, IP: 10.0.0.5)
-- [ ] Check for lsass.exe memory access events on WORKSTATION-042 in EDR
-- [ ] Confirm RDP session to SERVER-DC01 was not authorized maintenance
-- [ ] Review jsmith's recent phishing simulation participation (rule out authorized testing)
-- [ ] Validate Cobalt Strike hash is not from approved red team engagement
+- [ ] Confirm forensic artifacts match known Cobalt Strike behavior
+- [ ] Verify all TI matches are high-confidence (not sinkholed/research infrastructure)
+- [ ] Document lateral movement scope with EDR timeline
+- [ ] Confirm credential theft via lsass access patterns
 
 
 
 **To Confirm FALSE POSITIVE:**
-- [ ] Obtain written confirmation from jsmith that encoded PowerShell was intentional
-- [ ] Verify security testing approval ticket exists for this timeframe
-- [ ] Confirm suspicious-domain.com is a legitimate security research domain (unlikely)
-- [ ] Check if WORKSTATION-042 is an approved penetration testing workstation
+- [ ] Interview jsmith to confirm no authorized red team/pentest activity
+- [ ] Check if PowerShell script is a known developer tool
+- [ ] Verify C2 domain is not legitimate CDN or cloud infrastructure
+- [ ] Confirm no scheduled security testing on affected hosts
 
 
 
 **Similar Case Closure Patterns:**
-- CASE-2024-0892: Closed as TP after confirming C2 traffic + credential dump (72h to remediate)
-- CASE-2024-0756: Closed as TP after lateral movement confirmed (24h to contain)
-- CASE-2024-0634: Closed as FP after developer confirmed legitimate build script usage
+- CASE-2024-0892: Closed as TP after 72h - credential rotation, EDR isolation, IOC blocking
+- CASE-2024-0756: Closed as TP after 24h - faster response due to existing playbook
 
 
 
@@ -791,4 +793,4 @@ This triage report was automatically generated for signal **DEMO-2024-001**.
 
 
 *Generated by SOC Triage Bot v2.0.0*
-*AI Analysis: 2025-12-15T17:00:28.867891+00:00Z*
+*AI Analysis: 2025-12-15T18:59:36.734892+00:00Z*

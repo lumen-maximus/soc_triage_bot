@@ -318,9 +318,10 @@ class MitreMapping(BaseModel):
 
 
 class ClassificationResult(BaseModel):
-    """Enhanced classification result matching spec.
+    """Classification result with MITRE mapping and structured reasoning.
 
-    This is `r.classification` in the template.
+    This is `r.classification` in the template. Primary classification model
+    used by ActionProposalService, RunbookRegistry, and TriageService.
     """
 
     disposition: str = Field(
@@ -358,6 +359,64 @@ class ClassificationResult(BaseModel):
         default="RB-GEN-001 Generic Signal Triage",
         description="Reference runbook for this incident type",
     )
+
+    # =========================================================================
+    # Computed properties for downstream service consumption
+    # =========================================================================
+
+    @property
+    def label(self) -> "ClassificationLabel":
+        """Get ClassificationLabel enum from disposition string.
+
+        Maps disposition to ClassificationLabel for use with
+        ActionProposalService, RunbookRegistry, and other downstream services.
+        """
+        from .classification import ClassificationLabel
+
+        disposition_upper = self.disposition.upper().replace(" ", "_")
+        if "TRUE_POSITIVE" in disposition_upper or "TRUE POSITIVE" in self.disposition:
+            return ClassificationLabel.TRUE_POSITIVE
+        elif (
+            "FALSE_POSITIVE" in disposition_upper
+            or "FALSE POSITIVE" in self.disposition
+        ):
+            return ClassificationLabel.FALSE_POSITIVE
+        elif "BENIGN" in disposition_upper:
+            return ClassificationLabel.BENIGN_POSITIVE
+        else:
+            return ClassificationLabel.UNKNOWN
+
+    @property
+    def confidence_score(self) -> float:
+        """Get numeric confidence score (alias for tp_likelihood).
+
+        Note: This class has .confidence as str (high/medium/low).
+        Use .confidence_score for numeric value, .confidence for categorical.
+        """
+        return self.tp_likelihood
+
+    @property
+    def reasoning(self) -> List[str]:
+        """Get combined reasoning from TP and FP drivers."""
+        return self.reasons_tp + self.reasons_fp
+
+    @property
+    def factors(self) -> Dict[str, float]:
+        """Get empty factors dict (not used in this model).
+
+        Classification factors are stored in reasons_tp/reasons_fp lists.
+        """
+        return {}
+
+    @property
+    def similar_cases(self) -> List[str]:
+        """Get empty similar_cases list (stored at TriageReport level)."""
+        return []
+
+    @property
+    def forecast_data(self) -> Optional[Dict[str, Any]]:
+        """Get None (forecast data stored in ForecastBundle at TriageReport level)."""
+        return None
 
 
 # =============================================================================

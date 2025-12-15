@@ -1,12 +1,12 @@
 """Main triage orchestration service.
 
-Extended to orchestrate multi-track ETS forecasting and assemble TriageReport.
+Orchestrates multi-track ETS forecasting and assembles TriageReport.
 """
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ..models import Action, AIOverlay, Classification, EnrichmentResult, Signal
+from ..models import Action, AIOverlay, EnrichmentResult, Signal
 from ..models.triage_report import (
     AssetContext,
     ClassificationResult,
@@ -33,26 +33,31 @@ if TYPE_CHECKING:
 
 
 class TriageResult:
-    """Complete triage result with both legacy and new formats."""
+    """Complete triage result with ClassificationResult.
+
+    ClassificationResult has `.label` and `.confidence_score` computed properties
+    for use with ActionProposalService and RunbookRegistry.
+    """
 
     def __init__(
         self,
         signal: Signal,
         enrichments: Dict[str, EnrichmentResult],
-        classification: Classification,
+        classification: ClassificationResult,
         actions: List[Action],
         report: str,
         forecast_data: Optional[Dict[str, Any]] = None,
         similar_cases: Optional[List[tuple]] = None,
         duration_ms: Optional[float] = None,
-        # New structured output
+        # Structured output (same as classification, kept for API clarity)
         triage_report: Optional[TriageReport] = None,
-        classification_result: Optional[ClassificationResult] = None,
         forecast_bundle: Optional[ForecastBundle] = None,
     ):
         self.signal = signal
         self.enrichments = enrichments
-        self.classification = classification
+        self.classification = (
+            classification  # ClassificationResult with .label property
+        )
         self.actions = actions
         self.report = report
         self.forecast_data = forecast_data
@@ -60,9 +65,9 @@ class TriageResult:
         self.duration_ms = duration_ms
         self.timestamp = datetime.now(timezone.utc)
 
-        # New structured output
+        # Structured output references
         self.triage_report = triage_report
-        self.classification_result = classification_result
+        self.classification_result = classification  # Alias for clarity
         self.forecast_bundle = forecast_bundle
 
 
@@ -158,10 +163,11 @@ class TriageService:
         )
 
         # Step 5: Action proposals -> Recommendations
-        # Pass similar_cases_models for case-learned and case-linked actions
+        # Pass ClassificationResult directly - ActionProposalService now supports it
+        # via ClassificationInput union type (forward-compatible)
         actions = self.action_proposal_service.propose_actions(
             signal=signal,
-            classification=self._classification_result_to_legacy(classification_result),
+            classification=classification_result,  # Direct pass, no conversion needed
             enrichments=enrichments,
             similar_cases=similar_cases_tuples,
             similar_cases_models=similar_cases_models,
@@ -192,7 +198,7 @@ class TriageService:
         return TriageResult(
             signal=signal,
             enrichments=enrichments,
-            classification=self._classification_result_to_legacy(classification_result),
+            classification=classification_result,  # Direct pass - no legacy conversion
             actions=actions,
             report=report,
             forecast_data=(
@@ -200,9 +206,7 @@ class TriageService:
             ),
             similar_cases=[(c.case_id, c.similarity) for c in similar_cases_models],
             duration_ms=duration_ms,
-            # New structured output
             triage_report=triage_report,
-            classification_result=classification_result,
             forecast_bundle=forecast_bundle,
         )
 
@@ -344,26 +348,3 @@ class TriageService:
             )
             for a in actions
         ]
-
-    def _classification_result_to_legacy(
-        self, cr: ClassificationResult
-    ) -> Classification:
-        """Convert ClassificationResult to legacy Classification."""
-        from ..models import ClassificationLabel
-
-        # Map disposition to label
-        if "True Positive" in cr.disposition:
-            label = ClassificationLabel.TRUE_POSITIVE
-        elif "False Positive" in cr.disposition:
-            label = ClassificationLabel.FALSE_POSITIVE
-        else:
-            label = ClassificationLabel.UNKNOWN
-
-        return Classification(
-            label=label,
-            confidence=cr.tp_likelihood,
-            reasoning=cr.reasons_tp + cr.reasons_fp,
-            factors={},
-            similar_cases=[],
-            forecast_data=None,
-        )

@@ -10,7 +10,7 @@ from .ai_overlay import (
     StatementType,
     TPFPLikelihood,
 )
-from .classification import Classification, ClassificationLabel
+from .classification import ClassificationLabel
 from .enrichment import (
     EnrichmentResult,
     EnrichmentStatus,
