@@ -183,9 +183,7 @@ class Signal(BaseModel):
         None, description="Vulnerability-specific context"
     )
 
-    # =========================================================================
-    # LEGACY FIELDS (for backward compatibility during migration)
-    # =========================================================================
+    # Entity and indicator fields (also used as fallback for multi-track)
     entities: Dict[str, List[str]] = Field(
         default_factory=dict,
         description="Entities involved (ip, hostname, user, process, file, etc.)",

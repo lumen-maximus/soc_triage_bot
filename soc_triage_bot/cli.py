@@ -30,6 +30,7 @@ from .models.signal import (
     VulnerabilityContext,
 )
 from .services import EnrichmentService, TriageService
+from .services.forecasting import MultiTrackHistoricalData
 
 # =============================================================================
 # BANNER & UI/UX UTILITIES
@@ -477,16 +478,19 @@ def validate(signal_file: str):
         raise click.Abort()
 
 
-async def execute_triage(signal: Signal, historical_data, forecast_enabled: bool = True):
-    """Execute triage asynchronously.
+async def execute_triage(signal: Signal, historical_data: Optional[MultiTrackHistoricalData] = None, forecast_enabled: bool = True):
+    """Execute triage asynchronously using the extended multi-track triage.
 
     Args:
         signal: Normalized signal to triage
-        historical_data: Optional historical data for forecasting
+        historical_data: Optional multi-track historical data for forecasting
         forecast_enabled: Whether to run ETS forecasting
     """
     triage_service = setup_triage_service()
-    result = await triage_service.triage(signal, historical_data, forecast_enabled=forecast_enabled)
+    
+    result = await triage_service.triage_extended(
+        signal, historical_data, forecast_enabled=forecast_enabled
+    )
     return result
 
 
@@ -876,9 +880,4 @@ def format_result_as_json(result):
 
 if __name__ == "__main__":
     main()
-        "timestamp": result.timestamp.isoformat()
-    }
 
-
-if __name__ == "__main__":
-    main()
