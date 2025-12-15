@@ -143,39 +143,6 @@ def test_triage_with_different_signal_types():
         assert data["signal_id"] == f"test-type-{sig_type}"
 
 
-def test_triage_with_legacy_historical_data():
-    """Test triage endpoint with legacy historical data format."""
-    signal_data = {
-        "signal_id": "test-legacy-hist-001",
-        "signal_type": "siem_alert",
-        "timestamp": "2025-12-15T12:00:00Z",
-        "source": {"system": "test", "rule_id": "legacy-rule-001"},
-        "title": "Legacy Historical Data Test",
-        "description": "Test with legacy list format",
-        "severity": "high",
-        "entities": {"ip": ["192.0.2.70"]},
-        "tags": [],
-        "raw_data": {},
-        "metadata": {}
-    }
-    
-    legacy_historical = [
-        {"timestamp": "2025-12-14T12:00:00Z", "count": 5},
-        {"timestamp": "2025-12-14T13:00:00Z", "count": 7},
-        {"timestamp": "2025-12-14T14:00:00Z", "count": 3},
-    ]
-    
-    response = client.post("/triage", json={
-        "signal": signal_data,
-        "legacy_historical_data": legacy_historical
-    })
-    assert response.status_code == 200
-    data = response.json()
-    
-    assert "triage_id" in data
-    assert data["signal_id"] == "test-legacy-hist-001"
-
-
 def test_triage_with_enriched_signal():
     """Test triage with a fully enriched signal (context fields)."""
     signal_data = {
