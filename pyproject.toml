@@ -32,6 +32,18 @@ dev = [
     "pytest-cov>=4.1.0",
     "httpx>=0.25.0",
 ]
+ai = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+]
+ollama = [
+    "httpx>=0.25.0",
+]
+all = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "httpx>=0.25.0",
+]
 
 [project.scripts]
 soc-agent = "soc_triage_bot.cli:main"

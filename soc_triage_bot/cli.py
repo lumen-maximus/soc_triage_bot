@@ -22,6 +22,7 @@ from .adapters import (
     ThreatIntelAdapter,
     VulnerabilityAdapter,
 )
+from .config.settings import get_settings
 from .models import Signal, SignalSource, SignalType
 from .models.signal import (
     ArtifactContext,
@@ -29,7 +30,7 @@ from .models.signal import (
     EntityBehaviorContext,
     VulnerabilityContext,
 )
-from .services import EnrichmentService, TriageService
+from .services import AIService, EnrichmentService, TriageService
 from .services.forecasting import MultiTrackHistoricalData
 
 # =============================================================================
@@ -183,8 +184,12 @@ def show_divider():
 # =============================================================================
 
 
-def setup_triage_service():
-    """Initialize the triage service."""
+def setup_triage_service(ai_enabled: bool = False):
+    """Initialize the triage service.
+
+    Args:
+        ai_enabled: Whether to enable AI overlay generation.
+    """
     adapters = [
         SIEMAdapter(),
         EDRAdapter(),
@@ -194,7 +199,14 @@ def setup_triage_service():
     ]
 
     enrichment_service = EnrichmentService(adapters)
-    return TriageService(enrichment_service=enrichment_service)
+
+    # Create AI service if enabled
+    ai_service = None
+    if ai_enabled:
+        settings = get_settings()
+        ai_service = AIService.from_settings(settings)
+
+    return TriageService(enrichment_service=enrichment_service, ai_service=ai_service)
 
 
 @click.group(invoke_without_command=True)
@@ -277,6 +289,11 @@ def serve(host: str, port: int, reload: bool):
     help="Output format",
 )
 @click.option("--demo", is_flag=True, help="Run in demo mode with sample data")
+@click.option(
+    "--ai-service/--no-ai-service",
+    default=False,
+    help="Enable/disable AI overlay generation (requires AI provider config)",
+)
 def triage(
     signal_file: Optional[str],
     ioc: Optional[str],
@@ -288,6 +305,7 @@ def triage(
     output: Optional[str],
     format: str,
     demo: bool,
+    ai_service: bool,
 ):
     """Triage a security signal from various input sources.
 
@@ -393,8 +411,12 @@ def triage(
     show_step(3, "Finding similar cases...", "running")
     show_step(4, "Classifying signal...", "running")
     show_step(5, "Generating recommendations...", "running")
+    if ai_service:
+        show_step(6, "Generating AI overlay...", "running")
 
-    result = asyncio.run(execute_triage(signal, hist_data, forecast_enabled))
+    result = asyncio.run(
+        execute_triage(signal, hist_data, forecast_enabled, ai_enabled=ai_service)
+    )
 
     # Show completion
     duration_sec = result.duration_ms / 1000 if result.duration_ms else 0
@@ -565,6 +587,7 @@ async def execute_triage(
     signal: Signal,
     historical_data: Optional[MultiTrackHistoricalData] = None,
     forecast_enabled: bool = True,
+    ai_enabled: bool = False,
 ):
     """Execute triage asynchronously using the extended multi-track triage.
 
@@ -572,8 +595,9 @@ async def execute_triage(
         signal: Normalized signal to triage
         historical_data: Optional multi-track historical data for forecasting
         forecast_enabled: Whether to run ETS forecasting
+        ai_enabled: Whether to enable AI overlay generation
     """
-    triage_service = setup_triage_service()
+    triage_service = setup_triage_service(ai_enabled=ai_enabled)
 
     result = await triage_service.triage_extended(
         signal, historical_data, forecast_enabled=forecast_enabled

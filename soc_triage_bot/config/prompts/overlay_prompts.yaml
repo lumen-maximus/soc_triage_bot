@@ -1,0 +1,447 @@
+# AI Overlay Prompts Configuration
+# Version: 1.0.0
+# Last Updated: 2025-12-15
+#
+# These prompts are used by AIService to generate AI overlay content
+# for each section of the triage report.
+#
+# Placeholders available in all prompts:
+#   {signal_id} - Unique signal identifier
+#   {signal_type} - Type of signal (SIEM_ALERT, IOC, CVE, etc.)
+#   {signal_name} - Signal title/name
+#   {signal_source} - Source system
+#   {signal_timestamp} - When signal occurred
+#   {classification_disposition} - TP/FP/Unknown classification
+#   {classification_confidence} - Confidence score (0-1)
+#   {enrichments_summary} - Summary of enrichment data
+#   {similar_cases_summary} - Summary of similar historical cases
+#   {forecast_summary} - Summary of forecast data
+#   {entities_json} - JSON of extracted entities
+#   {context_json} - Full signal context as JSON
+
+version: '1.0.0'
+meta:
+  author: 'SOC Triage Bot'
+  description: 'Prompts for AI overlay generation'
+  model_family: 'gpt-4'
+
+system_prompt: |
+  You are an expert Security Operations Center (SOC) analyst AI assistant.
+  Your role is to analyze security signals and provide actionable insights.
+  Be concise, precise, and focus on what matters for incident response.
+  Use security industry terminology appropriately.
+  Always cite evidence when making claims.
+  Format responses for readability in markdown reports.
+
+prompts:
+  # Banner Section - Overall risk statement
+  banner_risk_statement:
+    description: 'One-line risk statement for report banner'
+    template: |
+      Based on this security signal, provide a single-sentence risk statement (max 20 words):
+
+      Signal: {signal_name}
+      Type: {signal_type}
+      Classification: {classification_disposition} ({classification_confidence:.0%} confidence)
+
+      Focus on business impact and urgency. Be direct and actionable.
+    max_tokens: 100
+
+  banner_tldr:
+    description: 'TL;DR summary for executives'
+    template: |
+      Provide a 2-3 sentence TL;DR for executives about this security event:
+
+      Signal: {signal_name}
+      Type: {signal_type}
+      Classification: {classification_disposition}
+      Key Entities: {entities_json}
+
+      Focus on: What happened? Is it real? What's the impact?
+    max_tokens: 150
+
+  # Section 1 - Executive Summary
+  section_1_summary:
+    description: 'AI-generated executive summary'
+    template: |
+      Generate a concise executive summary (3-4 sentences) for this security event:
+
+      Signal: {signal_name}
+      Type: {signal_type}
+      Source: {signal_source}
+      Time: {signal_timestamp}
+      Classification: {classification_disposition} ({classification_confidence:.0%})
+
+      Enrichment Summary: {enrichments_summary}
+
+      Cover: What was detected, preliminary assessment, and recommended priority.
+    max_tokens: 250
+
+  # Section 2 - Recommended Actions
+  section_2_actions:
+    description: 'AI-prioritized action recommendations'
+    template: |
+      Based on this security event, provide 3-5 prioritized action recommendations:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+      Entities Involved: {entities_json}
+      Enrichments: {enrichments_summary}
+
+      Format as numbered list with:
+      - Action description
+      - Responsible team (SOC, IR, IT, etc.)
+      - Urgency (Immediate, Soon, Monitor)
+
+      Consider containment, investigation, and communication needs.
+    max_tokens: 400
+
+  # Section 3 - Signal Context
+  section_3_context:
+    description: 'Contextual interpretation of the signal'
+    template: |
+      Analyze the context of this security signal:
+
+      Signal: {signal_name}
+      Type: {signal_type}
+      Context: {context_json}
+
+      Provide:
+      1. What this signal means in plain terms
+      2. Why it was triggered
+      3. Relevant MITRE ATT&CK techniques if applicable
+    max_tokens: 300
+
+  section_3_behavioral:
+    description: 'Behavioral analysis interpretation'
+    template: |
+      Analyze the behavioral aspects of this security event:
+
+      Signal: {signal_name}
+      Entities: {entities_json}
+      Historical Context: {forecast_summary}
+
+      Is this behavior normal, anomalous, or suspicious? Why?
+    max_tokens: 250
+
+  section_3_narrative:
+    description: 'Attack narrative reconstruction'
+    template: |
+      Based on available evidence, reconstruct a possible attack narrative:
+
+      Signal: {signal_name}
+      Timeline: {signal_timestamp}
+      Entities: {entities_json}
+      Enrichments: {enrichments_summary}
+
+      What likely happened? What might the attacker's goal be?
+      Keep speculative elements clearly marked as hypotheses.
+    max_tokens: 350
+
+  # Section 4 - Correlation
+  section_4_correlation:
+    description: 'Correlation analysis and related events'
+    template: |
+      Analyze correlations and related events for this signal:
+
+      Signal: {signal_name}
+      Entities: {entities_json}
+      Enrichments: {enrichments_summary}
+
+      What related events or indicators should analysts look for?
+      How does this connect to other potential activity?
+    max_tokens: 300
+
+  section_4_pattern:
+    description: 'Pattern recognition insights'
+    template: |
+      Identify any patterns in this security event:
+
+      Signal: {signal_name}
+      Type: {signal_type}
+      Similar Cases: {similar_cases_summary}
+
+      Are there recognizable attack patterns, known TTPs, or recurring themes?
+    max_tokens: 250
+
+  # Section 5 - Threat Intelligence
+  section_5_ti_analysis:
+    description: 'Threat intelligence analysis'
+    template: |
+      Provide threat intelligence context for this signal:
+
+      Signal: {signal_name}
+      IOCs/Indicators: {entities_json}
+      TI Enrichments: {enrichments_summary}
+
+      What does threat intelligence tell us about the indicators involved?
+      Known associations with threat actors or campaigns?
+    max_tokens: 300
+
+  section_5_attribution:
+    description: 'Attribution assessment (if applicable)'
+    template: |
+      Based on available intelligence, assess potential attribution:
+
+      Signal: {signal_name}
+      Indicators: {entities_json}
+      TI Data: {enrichments_summary}
+
+      Note: Attribution is inherently uncertain. Indicate confidence levels.
+      If attribution is not possible, state why and what would be needed.
+    max_tokens: 250
+
+  # Section 6 - Exposure/Risk
+  section_6_exposure:
+    description: 'Exposure and risk assessment'
+    template: |
+      Assess the exposure and risk for this security event:
+
+      Signal: {signal_name}
+      Affected Entities: {entities_json}
+      Asset Context: {enrichments_summary}
+
+      Consider:
+      - Scope of potential impact
+      - Sensitivity of affected systems/data
+      - Potential for lateral movement or escalation
+    max_tokens: 300
+
+  section_6_blast_radius:
+    description: 'Blast radius assessment'
+    template: |
+      Estimate the potential blast radius if this threat is realized:
+
+      Signal: {signal_name}
+      Entities: {entities_json}
+      Asset Criticality: {enrichments_summary}
+
+      What systems, users, or data could be affected?
+      What's the worst-case scenario?
+    max_tokens: 250
+
+  # Section 7 - Trend/Forecast
+  section_7_trend:
+    description: 'Trend analysis interpretation'
+    template: |
+      Interpret the trend and forecast data for this signal:
+
+      Signal: {signal_name}
+      Forecast Data: {forecast_summary}
+
+      Is this an anomaly compared to baseline?
+      What does the trend suggest about future risk?
+    max_tokens: 250
+
+  section_7_anomaly:
+    description: 'Anomaly explanation'
+    template: |
+      Explain any anomalies detected in the forecast data:
+
+      Signal: {signal_name}
+      Forecast: {forecast_summary}
+
+      Why is this considered anomalous?
+      What would normal look like?
+    max_tokens: 200
+
+  section_7_prediction:
+    description: 'Predictive assessment'
+    template: |
+      Based on trends, provide predictive assessment:
+
+      Signal: {signal_name}
+      Historical Trends: {forecast_summary}
+
+      What might we expect in the near future?
+      Should we increase monitoring?
+    max_tokens: 200
+
+  # Section 8 - Timeline
+  section_8_timeline:
+    description: 'Timeline narrative'
+    template: |
+      Construct a timeline narrative for this security event:
+
+      Signal: {signal_name}
+      Timestamp: {signal_timestamp}
+      Context: {context_json}
+
+      What is the likely sequence of events?
+      Mark any time gaps or uncertainties.
+    max_tokens: 300
+
+  section_8_gaps:
+    description: 'Timeline gaps analysis'
+    template: |
+      Identify gaps in the timeline that need investigation:
+
+      Signal: {signal_name}
+      Available Data: {enrichments_summary}
+
+      What periods or events are we missing visibility into?
+      What additional data would help?
+    max_tokens: 200
+
+  # Section 9 - Classification Assessment
+  section_9_assessment:
+    description: 'Classification reasoning'
+    template: |
+      Explain the classification assessment for this signal:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+      Confidence: {classification_confidence:.0%}
+
+      Why was this classified this way?
+      What evidence supports or contradicts the classification?
+    max_tokens: 300
+
+  section_9_tp_reasons:
+    description: 'True Positive supporting factors'
+    template: |
+      List factors supporting a True Positive classification:
+
+      Signal: {signal_name}
+      Enrichments: {enrichments_summary}
+      Similar Cases: {similar_cases_summary}
+
+      What evidence suggests this is a real threat?
+    max_tokens: 250
+
+  section_9_fp_reasons:
+    description: 'False Positive considerations'
+    template: |
+      List factors that could indicate False Positive:
+
+      Signal: {signal_name}
+      Context: {context_json}
+
+      What evidence might suggest this is benign?
+      What additional verification would help?
+    max_tokens: 250
+
+  section_9_uncertainties:
+    description: 'Uncertainty factors'
+    template: |
+      Identify key uncertainties in the classification:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+      Confidence: {classification_confidence:.0%}
+
+      What would change our confidence?
+      What additional evidence is needed?
+    max_tokens: 200
+
+  # Section 10 - Similar Cases
+  section_10_similar_narrative:
+    description: 'Similar cases narrative'
+    template: |
+      Provide narrative about similar historical cases:
+
+      Signal: {signal_name}
+      Similar Cases: {similar_cases_summary}
+
+      What can we learn from how similar cases were handled?
+      What worked well? What should we avoid?
+    max_tokens: 300
+
+  # Section 11 - Closure Criteria
+  section_11_criteria:
+    description: 'Case closure criteria'
+    template: |
+      Define clear closure criteria for this case:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+
+      What conditions must be met to close this case?
+      Format as a checklist.
+    max_tokens: 250
+
+  section_11_evidence:
+    description: 'Evidence required for closure'
+    template: |
+      Specify evidence required to close this case:
+
+      Signal: {signal_name}
+      Current Evidence: {enrichments_summary}
+
+      What documentation or artifacts are needed?
+    max_tokens: 200
+
+  section_11_next_check:
+    description: 'Follow-up schedule recommendation'
+    template: |
+      Recommend follow-up schedule for this case:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+
+      When should this be re-evaluated?
+      What should be checked?
+    max_tokens: 150
+
+  section_11_sla:
+    description: 'SLA compliance assessment'
+    template: |
+      Assess SLA compliance requirements:
+
+      Signal: {signal_name}
+      Severity implied by classification: {classification_disposition}
+
+      What are the SLA expectations?
+      Are we on track?
+    max_tokens: 150
+
+  # Section 12 - Stakeholder Communication
+  section_12_stakeholder:
+    description: 'Stakeholder notification recommendation'
+    template: |
+      Recommend stakeholder notifications:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+      Impact: {enrichments_summary}
+
+      Who should be notified?
+      What level of detail is appropriate for each audience?
+    max_tokens: 250
+
+  section_12_comms:
+    description: 'Communication draft'
+    template: |
+      Draft a brief communication for stakeholders:
+
+      Signal: {signal_name}
+      Classification: {classification_disposition}
+
+      Keep it high-level and business-focused.
+      Avoid technical jargon.
+    max_tokens: 200
+
+  # Section 13 - Data Quality
+  section_13_quality:
+    description: 'Data quality assessment'
+    template: |
+      Assess the quality of data used for this analysis:
+
+      Signal: {signal_name}
+      Enrichments available: {enrichments_summary}
+
+      What data was complete and reliable?
+      Where are there gaps or quality issues?
+    max_tokens: 250
+
+  section_13_gaps:
+    description: 'Data gaps identification'
+    template: |
+      Identify data gaps that affected the analysis:
+
+      Signal: {signal_name}
+      Available Data: {enrichments_summary}
+
+      What additional data sources would improve analysis?
+      Are there collection or retention issues to address?
+    max_tokens: 200

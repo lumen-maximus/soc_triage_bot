@@ -4,7 +4,7 @@ Extended to orchestrate multi-track ETS forecasting and assemble TriageReport.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..models import Action, AIOverlay, Classification, EnrichmentResult, Signal
 from ..models.triage_report import (
@@ -27,6 +27,9 @@ from .enrichment import EnrichmentService
 from .forecasting import ForecastingService, MultiTrackHistoricalData
 from .report import ReportService
 from .similarity import SimilarityService
+
+if TYPE_CHECKING:
+    from .ai import AIService
 
 
 class TriageResult:
@@ -70,6 +73,7 @@ class TriageService:
     - Accepts MultiTrackHistoricalData for forecast_multi_track()
     - Assembles complete TriageReport model
     - Returns both legacy and new structured output
+    - Optionally uses AIService for AI overlay generation
     """
 
     def __init__(
@@ -80,8 +84,19 @@ class TriageService:
         classification_service: Optional[ClassificationService] = None,
         action_proposal_service: Optional[ActionProposalService] = None,
         report_service: Optional[ReportService] = None,
+        ai_service: Optional["AIService"] = None,
     ):
-        """Initialize triage service."""
+        """Initialize triage service.
+
+        Args:
+            enrichment_service: Service for signal enrichment
+            forecasting_service: Service for ETS forecasting (optional)
+            similarity_service: Service for similar case retrieval (optional)
+            classification_service: Service for classification (optional)
+            action_proposal_service: Service for action proposals (optional)
+            report_service: Service for report generation (optional)
+            ai_service: Service for AI overlay generation (optional)
+        """
         self.enrichment_service = enrichment_service
         self.forecasting_service = forecasting_service or ForecastingService()
         self.similarity_service = similarity_service or SimilarityService()
@@ -90,6 +105,7 @@ class TriageService:
             action_proposal_service or ActionProposalService()
         )
         self.report_service = report_service or ReportService()
+        self.ai_service = ai_service  # None = no AI overlay
 
     async def triage_extended(
         self,
@@ -162,6 +178,10 @@ class TriageService:
             recommendations=recommendations,
             start_time=start_time,
         )
+
+        # Step 6.5: Generate AI overlay if service available and not provided
+        if ai_overlay is None and self.ai_service is not None:
+            ai_overlay = await self.ai_service.generate_overlay(triage_report, signal)
 
         # Step 7: Generate report using new template
         report = self.report_service.generate_report(triage_report, ai_overlay)
