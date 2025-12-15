@@ -7,8 +7,8 @@
 **Signal Source:** Splunk
 **Signal Name:** PowerShell with Base64 Encoded Command Detected
 **Category:** Execution / Defense Evasion
-**Signal Time (UTC):** 2025-12-15T04:54:47.570092+00:00Z
-**Generated (UTC):** 2025-12-15T04:54:47.570286+00:00Z
+**Signal Time (UTC):** 2025-12-15T05:08:21.813883+00:00Z
+**Generated (UTC):** 2025-12-15T05:08:21.814211+00:00Z
 **Triage Owner:** Analyst Team Alpha
 **Tool Version:** 2.0.0
 **AI Model:** GPT-4o (2024-12-14)
@@ -282,6 +282,19 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 ## 7. Trend & Forecast (ETS, Multi-Horizon)
 
 
+
+
+### 📊 Trend At-a-Glance
+
+| Track | Status | Score | Deviation | H24 Forecast | Reliability |
+|-------|--------|-------|-----------|--------------|-------------|
+| Rule (A) | 🔴 SPIKE | 0.92 | 5.2x above expected | 65.2 | HIGH |
+| IOC (B) | 🟠 ELEVATED | 0.72 | 2.8x above expected | 28.7 | MEDIUM |
+| Entity (C) | 🔴 SPIKE | 0.88 | 4.1x above expected | 52.8 | HIGH |
+
+> 🔴 **HIGHEST CONCERN:** Rule (A) — significant spike detected (5.2x above expected, score=0.92)
+
+
 - **Bucket size:** 60 minutes
 - **Seasonality mode:** auto
 - **Season length (buckets):** 24
@@ -301,7 +314,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** SPIKE - 5.2x above expected. Anomalous activity detected.
 - **Confidence:** high
 #### 7.1.a Series Metadata
-- **History range:** 2025-12-08T04:54:47.571445+00:00Z → 2025-12-15T04:54:47.571445+00:00Z
+- **History range:** 2025-12-08T05:08:21.815160+00:00Z → 2025-12-15T05:08:21.815160+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 1.2%
 - **Data completeness:** COMPLETE
@@ -345,7 +358,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** ELEVATED - 2.8x above baseline. New indicator emerging.
 - **Confidence:** medium
 #### 7.2.a Series Metadata
-- **History range:** 2025-12-08T04:54:47.571445+00:00Z → 2025-12-15T04:54:47.571445+00:00Z
+- **History range:** 2025-12-08T05:08:21.815160+00:00Z → 2025-12-15T05:08:21.815160+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 3.0%
 - **Data completeness:** COMPLETE
@@ -391,7 +404,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** SPIKE - 4.1x above expected. Entity anomaly detected.
 - **Confidence:** high
 #### 7.3.a Series Metadata
-- **History range:** 2025-12-08T04:54:47.571445+00:00Z → 2025-12-15T04:54:47.571445+00:00Z
+- **History range:** 2025-12-08T05:08:21.815160+00:00Z → 2025-12-15T05:08:21.815160+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 0.0%
 - **Data completeness:** COMPLETE
@@ -425,17 +438,18 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 
 ### 🤖 AI Trend Interpretation
 
-All three ETS tracks show significant spikes: Rule (5.2x), IOC (2.8x), Entity (4.1x). This multi-track anomaly pattern strongly correlates with active attack in progress.
+**Cross-Track Synthesis:**
+Triple-track spike (Rule + IOC + Entity all elevated) is rare and historically correlates with 95% TP rate. This pattern indicates coordinated attack activity, not noise or isolated anomaly.
 
 
 **Per-Track Insights:**
-- **Rule Track:** 5.2x spike above baseline indicates rule is triggering on active attack, not noise ⚠️ May need to hunt for similar alerts in last 6 hours `[E-001]`
-- **Ioc Track:** IOC sightings accelerating - 8 in last hour vs 0 yesterday ⚠️ New campaign targeting organization? `[E-002]`
-- **Entity Track:** Host behavior highly anomalous - 4.1x above typical developer activity ⚠️ Other developer workstations may be targeted `[E-003]`
+- **Rule:** 5.2x spike above baseline indicates rule is triggering on active attack, not noise ⚠️ May need to hunt for similar alerts in last 6 hours `[E-001]`
+- **Ioc:** IOC sightings accelerating - 8 in last hour vs 0 yesterday ⚠️ New campaign targeting organization? `[E-002]`
+- **Entity:** Host behavior highly anomalous - 4.1x above typical developer activity ⚠️ Other developer workstations may be targeted `[E-003]`
 
 
 
-**General Trend Concerns:**
+**Cross-Track Concerns:**
 - ⚠️ Triple-track spike pattern is rare and historically correlates with 95% TP rate
 - ⚠️ IOC is new to environment - no baseline, so spike thresholds may be conservative
 
@@ -451,12 +465,12 @@ All three ETS tracks show significant spikes: Rule (5.2x), IOC (2.8x), Entity (4
 
 | Time (UTC) | Source/System | Event Summary | Relevance |
 |------------|--------------|--------------|-----------|
-| 2025-12-14T22:39:47.571445+00:00Z | DNS | First DNS query to suspicious-domain.com from WORKSTATION-042 | Initial contact with C2 infrastructure |
-| 2025-12-14T23:09:47.571445+00:00Z | Proxy | HTTPS POST to suspicious-domain.com/beacon (4.2KB payload) | Likely Cobalt Strike beacon check-in |
-| 2025-12-15T00:24:47.571445+00:00Z | EDR | explorer.exe spawned powershell.exe with encoded args | Primary detection event (this alert) |
-| 2025-12-15T01:39:47.571445+00:00Z | EDR | powershell.exe accessed lsass.exe memory (Mimikatz pattern) | Credential dumping attempt detected |
-| 2025-12-15T02:09:47.571445+00:00Z | AD | jsmith account used for RDP to SERVER-DC01 (unusual) | Potential lateral movement attempt |
-| 2025-12-15T03:24:47.571445+00:00Z | Network | SMB connection from WORKSTATION-042 to WORKSTATION-089 | Lateral movement confirmed to additional host |
+| 2025-12-14T22:53:21.815160+00:00Z | DNS | First DNS query to suspicious-domain.com from WORKSTATION-042 | Initial contact with C2 infrastructure |
+| 2025-12-14T23:23:21.815160+00:00Z | Proxy | HTTPS POST to suspicious-domain.com/beacon (4.2KB payload) | Likely Cobalt Strike beacon check-in |
+| 2025-12-15T00:38:21.815160+00:00Z | EDR | explorer.exe spawned powershell.exe with encoded args | Primary detection event (this alert) |
+| 2025-12-15T01:53:21.815160+00:00Z | EDR | powershell.exe accessed lsass.exe memory (Mimikatz pattern) | Credential dumping attempt detected |
+| 2025-12-15T02:23:21.815160+00:00Z | AD | jsmith account used for RDP to SERVER-DC01 (unusual) | Potential lateral movement attempt |
+| 2025-12-15T03:38:21.815160+00:00Z | Network | SMB connection from WORKSTATION-042 to WORKSTATION-089 | Lateral movement confirmed to additional host |
 
 
 
@@ -567,9 +581,9 @@ FP discount: -13% for developer context and elevated privileges baseline.
 
 | Case ID | Opened (UTC) | Disposition | Overlap | Key Actions Taken |
 |--------|--------------|------------|---------|------------------|
-| CASE-2024-0892 | 2025-12-03T04:54:47.571445+00:00Z | TRUE_POSITIVE | Same IOC (suspicious-domain.com) + Cobalt Strike pattern + Credential dumping | Isolated affected hosts via EDR; Reset credentials for compromised accounts; Blocked IOCs at firewall and proxy; Forensic image captured for investigation; Engaged IR team for full compromise assessment |
-| CASE-2024-0756 | 2025-11-17T04:54:47.571445+00:00Z | TRUE_POSITIVE | Cobalt Strike beacon + Lateral movement pattern | EDR containment of affected hosts; Password reset for affected accounts; IOC blocking across perimeter |
-| CASE-2024-0634 | 2025-10-31T04:54:47.571445+00:00Z | FALSE_POSITIVE | Encoded PowerShell + Developer workstation | Verified script was legitimate build tool; Added exclusion to detection rule |
+| CASE-2024-0892 | 2025-12-03T05:08:21.815160+00:00Z | TRUE_POSITIVE | Same IOC (suspicious-domain.com) + Cobalt Strike pattern + Credential dumping | Isolated affected hosts via EDR; Reset credentials for compromised accounts; Blocked IOCs at firewall and proxy; Forensic image captured for investigation; Engaged IR team for full compromise assessment |
+| CASE-2024-0756 | 2025-11-17T05:08:21.815160+00:00Z | TRUE_POSITIVE | Cobalt Strike beacon + Lateral movement pattern | EDR containment of affected hosts; Password reset for affected accounts; IOC blocking across perimeter |
+| CASE-2024-0634 | 2025-10-31T05:08:21.815160+00:00Z | FALSE_POSITIVE | Encoded PowerShell + Developer workstation | Verified script was legitimate build tool; Added exclusion to detection rule |
 
 
 
@@ -730,4 +744,4 @@ This triage report was automatically generated for signal **DEMO-2024-001**.
 
 
 *Generated by SOC Triage Bot v2.0.0*
-*AI Analysis: 2025-12-15T04:54:47.572098+00:00Z*
+*AI Analysis: 2025-12-15T05:08:21.816096+00:00Z*

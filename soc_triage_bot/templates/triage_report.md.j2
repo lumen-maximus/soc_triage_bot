@@ -357,6 +357,63 @@ Multi-track forecast with signal-type-specific entity selection
 
 {# This section must explicitly state reliability (backtest) and not overstate results. #}
 {% if r.forecast and r.forecast.enabled -%}
+
+{# ============ TREND AT-A-GLANCE SUMMARY TABLE ============ #}
+{# Deterministic severity indicators based on anomaly_score thresholds:
+   - >0.8 = 🔴 SPIKE (urgent attention)
+   - >0.5 = 🟠 ELEVATED (investigate)
+   - >0.3 = 🟡 ABOVE NORMAL (monitor)
+   - <=0.3 = 🟢 NORMAL (routine)
+   - N/A = ⚪ (track not available)
+#}
+{% set tracks = r.forecast.tracks -%}
+{% set has_any_track = (tracks.rule and tracks.rule.metric_key) or (tracks.ioc and tracks.ioc.metric_key) or (tracks.entity and tracks.entity.metric_key) -%}
+{% if has_any_track -%}
+### 📊 Trend At-a-Glance
+
+| Track | Status | Score | Deviation | H24 Forecast | Reliability |
+|-------|--------|-------|-----------|--------------|-------------|
+{% if tracks.rule and tracks.rule.metric_key -%}
+{% set t = tracks.rule -%}
+{% set score = t.latest.anomaly_score if t.latest and t.latest.anomaly_score is not none else 0 -%}
+{% if score > 0.8 -%}{% set status = "🔴 SPIKE" -%}{% elif score > 0.5 -%}{% set status = "🟠 ELEVATED" -%}{% elif score > 0.3 -%}{% set status = "🟡 ABOVE NORMAL" -%}{% else -%}{% set status = "🟢 NORMAL" -%}{% endif -%}
+| Rule (A) | {{ status }} | {{ "%.2f"|format(score) }} | {{ t.latest.current_vs_expected if t.latest else "N/A" }} | {{ t.horizons.H24.total if t.horizons and t.horizons.H24 else "N/A" }} | {{ t.reliability | default("N/A") }} |
+{% endif -%}
+{% if tracks.ioc and tracks.ioc.metric_key -%}
+{% set t = tracks.ioc -%}
+{% set score = t.latest.anomaly_score if t.latest and t.latest.anomaly_score is not none else 0 -%}
+{% if score > 0.8 -%}{% set status = "🔴 SPIKE" -%}{% elif score > 0.5 -%}{% set status = "🟠 ELEVATED" -%}{% elif score > 0.3 -%}{% set status = "🟡 ABOVE NORMAL" -%}{% else -%}{% set status = "🟢 NORMAL" -%}{% endif -%}
+| IOC (B) | {{ status }} | {{ "%.2f"|format(score) }} | {{ t.latest.current_vs_expected if t.latest else "N/A" }} | {{ t.horizons.H24.total if t.horizons and t.horizons.H24 else "N/A" }} | {{ t.reliability | default("N/A") }} |
+{% endif -%}
+{% if tracks.entity and tracks.entity.metric_key -%}
+{% set t = tracks.entity -%}
+{% set score = t.latest.anomaly_score if t.latest and t.latest.anomaly_score is not none else 0 -%}
+{% if score > 0.8 -%}{% set status = "🔴 SPIKE" -%}{% elif score > 0.5 -%}{% set status = "🟠 ELEVATED" -%}{% elif score > 0.3 -%}{% set status = "🟡 ABOVE NORMAL" -%}{% else -%}{% set status = "🟢 NORMAL" -%}{% endif -%}
+| Entity (C) | {{ status }} | {{ "%.2f"|format(score) }} | {{ t.latest.current_vs_expected if t.latest else "N/A" }} | {{ t.horizons.H24.total if t.horizons and t.horizons.H24 else "N/A" }} | {{ t.reliability | default("N/A") }} |
+{% endif -%}
+
+{# Determine highest concern track #}
+{% set worst_track = namespace(name="none", score=0, deviation="N/A") -%}
+{% if tracks.rule and tracks.rule.latest and tracks.rule.latest.anomaly_score and tracks.rule.latest.anomaly_score > worst_track.score -%}
+{% set worst_track.name = "Rule (A)" -%}{% set worst_track.score = tracks.rule.latest.anomaly_score -%}{% set worst_track.deviation = tracks.rule.latest.current_vs_expected -%}
+{% endif -%}
+{% if tracks.ioc and tracks.ioc.latest and tracks.ioc.latest.anomaly_score and tracks.ioc.latest.anomaly_score > worst_track.score -%}
+{% set worst_track.name = "IOC (B)" -%}{% set worst_track.score = tracks.ioc.latest.anomaly_score -%}{% set worst_track.deviation = tracks.ioc.latest.current_vs_expected -%}
+{% endif -%}
+{% if tracks.entity and tracks.entity.latest and tracks.entity.latest.anomaly_score and tracks.entity.latest.anomaly_score > worst_track.score -%}
+{% set worst_track.name = "Entity (C)" -%}{% set worst_track.score = tracks.entity.latest.anomaly_score -%}{% set worst_track.deviation = tracks.entity.latest.current_vs_expected -%}
+{% endif -%}
+{% if worst_track.score > 0.8 -%}
+> 🔴 **HIGHEST CONCERN:** {{ worst_track.name }} — significant spike detected ({{ worst_track.deviation }}, score={{ "%.2f"|format(worst_track.score) }})
+{% elif worst_track.score > 0.5 -%}
+> 🟠 **HIGHEST CONCERN:** {{ worst_track.name }} — elevated activity ({{ worst_track.deviation }}, score={{ "%.2f"|format(worst_track.score) }})
+{% elif worst_track.score > 0.3 -%}
+> 🟡 **ATTENTION:** {{ worst_track.name }} — slightly above normal ({{ worst_track.deviation }}, score={{ "%.2f"|format(worst_track.score) }})
+{% else -%}
+> 🟢 **STATUS:** All tracks within normal range
+{% endif %}
+
+{% endif -%}
 - **Bucket size:** {{ r.forecast.bucket_minutes }} minutes
 - **Seasonality mode:** {{ r.forecast.seasonality.mode if r.forecast.seasonality and r.forecast.seasonality.mode else "auto/none" }}
 - **Season length (buckets):** {{ r.forecast.seasonality.season_length_buckets if r.forecast.seasonality and r.forecast.seasonality.season_length_buckets else "N/A" }}
@@ -603,18 +660,19 @@ Track selection guidance per signal type:
 ### 🤖 AI Trend Interpretation
 
 {% if ai_overlay.trend_interpretation -%}
+**Cross-Track Synthesis:**
 {{ ai_overlay.trend_interpretation }}
-{% endif %}
 
+{% endif %}
 {% if ai_overlay.track_interpretations and ai_overlay.track_interpretations|length > 0 -%}
 **Per-Track Insights:**
 {% for ti in ai_overlay.track_interpretations -%}
-- **{{ ti.track_name | capitalize }} Track:** {{ ti.interpretation }}{% if ti.concerns %} ⚠️ {{ ti.concerns | join(", ") }}{% endif %}{% if ti.evidence_ids %} `[{{ ti.evidence_ids|join(', ') }}]`{% endif %}
+- **{{ ti.track_name | capitalize }}:** {{ ti.interpretation }}{% if ti.concerns %} ⚠️ {{ ti.concerns | join(", ") }}{% endif %}{% if ti.evidence_ids %} `[{{ ti.evidence_ids|join(', ') }}]`{% endif %}
 {% endfor %}
-{% endif %}
 
+{% endif %}
 {% if ai_overlay.trend_concerns and ai_overlay.trend_concerns|length > 0 -%}
-**General Trend Concerns:**
+**Cross-Track Concerns:**
 {% for concern in ai_overlay.trend_concerns -%}
 - ⚠️ {{ concern }}
 {% endfor %}

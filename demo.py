@@ -942,8 +942,9 @@ def create_ai_overlay(signal: Signal) -> AIOverlay:
             "Likely contributed to attack success."
         ),
         trend_interpretation=(
-            "All three ETS tracks show significant spikes: Rule (5.2x), IOC (2.8x), Entity (4.1x). "
-            "This multi-track anomaly pattern strongly correlates with active attack in progress."
+            "Triple-track spike (Rule + IOC + Entity all elevated) is rare and historically "
+            "correlates with 95% TP rate. This pattern indicates coordinated attack activity, "
+            "not noise or isolated anomaly."
         ),
         track_interpretations=[
             AITrackInterpretation(

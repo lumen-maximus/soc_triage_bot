@@ -237,18 +237,29 @@ class AIOverlay(BaseModel):
 
     # =========================================================================
     # §7 TREND & FORECAST - Interpretation
+    # Cross-track synthesis belongs in trend_interpretation.
+    # Per-track details belong in track_interpretations.
     # =========================================================================
     trend_interpretation: str = Field(
         default="",
-        description="Overall AI interpretation of forecast/trend data for §7",
+        description=(
+            "Cross-track synthesis: What do the tracks TOGETHER mean? "
+            "Focus on patterns across tracks, not individual track details. "
+            "E.g., 'Triple-track spike strongly correlates with active attack' or "
+            "'Rule high + Entity normal suggests noisy rule, not targeted attack'. "
+            "Keep brief (1-2 sentences). For §7."
+        ),
     )
     trend_concerns: List[str] = Field(
         default_factory=list,
-        description="General trend concerns (e.g., 'Velocity increasing') for §7",
+        description=(
+            "Cross-track concerns only (e.g., 'Multi-track spike pattern is rare', "
+            "'IOC new to environment - limited baseline'). For §7."
+        ),
     )
     track_interpretations: List[AITrackInterpretation] = Field(
         default_factory=list,
-        description="Per-track (rule/ioc/entity) AI interpretations for §7",
+        description="Per-track (rule/ioc/entity) AI interpretations for §7. One per active track.",
     )
 
     # =========================================================================
