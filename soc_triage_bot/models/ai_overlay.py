@@ -64,7 +64,7 @@ class AIStatement(BaseModel):
         description="Evidence IDs this statement is based on (required for evidence_backed type)",
     )
     confidence: Optional[float] = Field(
-        None,
+        default=None,
         ge=0.0,
         le=1.0,
         description="Confidence in this statement (0-1)",

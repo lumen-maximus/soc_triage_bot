@@ -104,7 +104,7 @@ def test_classification_result():
         reasons_fp=["Rule has some FP history"],
         mitre=MitreMapping(tactics=["TA0001"], techniques=["T1190"]),
         incident_type="Security Alert",
-        triage_judgment="Recommend escalation to Tier 2"
+        triage_judgment="Recommend escalation to Tier 2",
     )
 
     assert result.disposition == "Likely True Positive"
@@ -126,7 +126,7 @@ def test_normalized_signal():
         name="Test Alert",
         category="Malware",
         timestamp_utc="2025-12-15T10:00:00Z",
-        raw={"key": "value"}
+        raw={"key": "value"},
     )
 
     assert signal.id == "sig-001"
@@ -137,15 +137,18 @@ def test_normalized_signal():
 def test_forecast_bundle():
     """Test ForecastBundle model."""
     from soc_triage_bot.models.triage_report import (
-        ForecastBundle, ForecastTracks, ForecastTrack, 
-        ForecastLatest, ForecastSeasonality
+        ForecastBundle,
+        ForecastLatest,
+        ForecastSeasonality,
+        ForecastTrack,
+        ForecastTracks,
     )
 
     latest = ForecastLatest(
         value=15.0,
         percentile=95.0,
         anomaly_score=0.85,
-        current_vs_expected="2x above expected"
+        current_vs_expected="2x above expected",
     )
 
     track = ForecastTrack(
@@ -156,25 +159,26 @@ def test_forecast_bundle():
         horizons={},
         reliability="HIGH",
         interpretation="Elevated activity",
-        latest=latest
+        latest=latest,
     )
 
     bundle = ForecastBundle(
         enabled=True,
         bucket_minutes=60,
         seasonality=ForecastSeasonality(mode="auto"),
-        tracks=ForecastTracks(rule=track)
+        tracks=ForecastTracks(rule=track),
     )
 
     assert bundle.enabled is True
     assert bundle.bucket_minutes == 60
     assert bundle.tracks.rule is not None
+    assert bundle.tracks.rule.latest is not None
     assert bundle.tracks.rule.latest.anomaly_score == 0.85
 
 
 def test_similar_case():
     """Test SimilarCase model."""
-    from soc_triage_bot.models.triage_report import SimilarCase, RunbookRef
+    from soc_triage_bot.models.triage_report import RunbookRef, SimilarCase
 
     runbook = RunbookRef(
         ref_id="RB-001",
@@ -182,7 +186,7 @@ def test_similar_case():
         source="soar",
         title="Malware Response",
         url="https://soar.example.com/runbooks/RB-001",
-        whitelisted=False
+        whitelisted=False,
     )
 
     case = SimilarCase(
@@ -195,7 +199,7 @@ def test_similar_case():
         actions_taken=["Isolated host", "Blocked IP"],
         notes="Confirmed malware infection",
         runbook_refs=[runbook],
-        tasks_template_id="TMPL-001"
+        tasks_template_id="TMPL-001",
     )
 
     assert case.case_id == "case-001"
@@ -216,7 +220,7 @@ def test_recommendation():
         owner_team="SOC",
         auto_executable=True,
         status="Pending",
-        rationale="Host is communicating with known C2 infrastructure"
+        rationale="Host is communicating with known C2 infrastructure",
     )
 
     assert rec.priority == 1
@@ -227,9 +231,16 @@ def test_recommendation():
 def test_triage_report_full():
     """Test complete TriageReport model assembly."""
     from soc_triage_bot.models.triage_report import (
-        TriageReport, NormalizedSignal, ReportMeta, SignalContext,
-        ClassificationResult, ForecastBundle, EnrichmentBundle,
-        SimilarCase, Recommendation, ExecutiveSummary
+        ClassificationResult,
+        EnrichmentBundle,
+        ExecutiveSummary,
+        ForecastBundle,
+        NormalizedSignal,
+        Recommendation,
+        ReportMeta,
+        SignalContext,
+        SimilarCase,
+        TriageReport,
     )
 
     signal = NormalizedSignal(
@@ -239,13 +250,13 @@ def test_triage_report_full():
         name="Full Test Alert",
         category="Malware",
         timestamp_utc="2025-12-15T10:00:00Z",
-        raw={}
+        raw={},
     )
 
     meta = ReportMeta(
         generated_utc="2025-12-15T10:05:00Z",
         triage_owner="Automated",
-        tool_version="2.0.0"
+        tool_version="2.0.0",
     )
 
     ctx = SignalContext(
@@ -254,7 +265,7 @@ def test_triage_report_full():
         hostname="workstation-01",
         src_ip="192.0.2.100",
         alert_rule="Suspicious PowerShell",
-        alert_vendor="splunk"
+        alert_vendor="splunk",
     )
 
     classification = ClassificationResult(
@@ -264,7 +275,7 @@ def test_triage_report_full():
         confidence="high",
         reasons_tp=["Malicious indicators found"],
         reasons_fp=[],
-        triage_judgment="Recommend escalation"
+        triage_judgment="Recommend escalation",
     )
 
     forecast = ForecastBundle(enabled=False)
@@ -275,7 +286,7 @@ def test_triage_report_full():
             description="Isolate host",
             owner_team="SOC",
             auto_executable=True,
-            status="Pending"
+            status="Pending",
         )
     ]
 
@@ -287,7 +298,7 @@ def test_triage_report_full():
         forecast=forecast,
         enrich=EnrichmentBundle(),
         similar_cases=[],
-        recommendations=recommendations
+        recommendations=recommendations,
     )
 
     assert report.signal.id == "sig-full-001"
@@ -299,8 +310,12 @@ def test_triage_report_full():
 def test_signal_track_helpers():
     """Test Signal model helper methods for track entity extraction."""
     from soc_triage_bot.models.signal import (
-        Signal, SignalType, SignalSource, 
-        DetectionContext, ArtifactContext, EntityBehaviorContext
+        ArtifactContext,
+        DetectionContext,
+        EntityBehaviorContext,
+        Signal,
+        SignalSource,
+        SignalType,
     )
 
     signal = Signal(
@@ -313,22 +328,31 @@ def test_signal_track_helpers():
         severity="high",
         entities={"ip": ["192.0.2.100"], "hostname": ["test-host"]},
         detection_context=DetectionContext(
-            rule_id="DET-001",
-            detection_name="Suspicious Activity"
+            rule_id="DET-001", detection_name="Suspicious Activity"
         ),
         artifact_context=ArtifactContext(
-            domain="test.example.com",
-            ip="198.51.100.1",
-            sha256="abc123def456"
+            domain="test.example.com", ip="198.51.100.1", sha256="abc123def456"
         ),
         entity_context=EntityBehaviorContext(
-            hostname="primary-host",
-            username="testuser",
-            src_ip="192.0.2.50"
-        )
+            hostname="primary-host", username="testuser", src_ip="192.0.2.50"
+        ),
     )
 
     # Test Track A key extraction
+    track_a_key = signal.get_track_a_key()
+    assert track_a_key == "DET-001"
+
+    # Test Track B keys extraction
+    track_b_keys = signal.get_track_b_keys()
+    assert "domain" in track_b_keys
+    assert "sha256" in track_b_keys
+    assert track_b_keys["domain"] == "test.example.com"
+
+    # Test Track C entity extraction
+    track_c_entity = signal.get_track_c_entity()
+    assert track_c_entity is not None
+    assert track_c_entity[0] == "hostname"
+    assert track_c_entity[1] == "primary-host"
     track_a_key = signal.get_track_a_key()
     assert track_a_key == "DET-001"
 

@@ -49,11 +49,13 @@ class ExtendedSignalType(str, Enum):
 class ForecastHorizonMetrics(BaseModel):
     """Backtest metrics for a single horizon (H1, H6, H24)."""
 
-    smape: Optional[float] = Field(None, description="Symmetric MAPE (%)")
-    mase: Optional[float] = Field(None, description="Mean Absolute Scaled Error")
-    rmse: Optional[float] = Field(None, description="Root Mean Square Error")
+    smape: Optional[float] = Field(default=None, description="Symmetric MAPE (%)")
+    mase: Optional[float] = Field(
+        default=None, description="Mean Absolute Scaled Error"
+    )
+    rmse: Optional[float] = Field(default=None, description="Root Mean Square Error")
     coverage95: Optional[float] = Field(
-        None, description="95% prediction interval coverage"
+        default=None, description="95% prediction interval coverage"
     )
 
 
@@ -63,25 +65,27 @@ class ForecastHorizonThresholds(BaseModel):
     Calibrated from backtest residuals (p95/p99 quantiles).
     """
 
-    spike_q: Optional[float] = Field(None, description="Spike quantile threshold")
-    drop_q: Optional[float] = Field(None, description="Drop quantile threshold")
+    spike_q: Optional[float] = Field(
+        default=None, description="Spike quantile threshold"
+    )
+    drop_q: Optional[float] = Field(default=None, description="Drop quantile threshold")
     spike_threshold_p95: Optional[float] = Field(
-        None, description="Spike threshold at p95 (forecast + residual_p95)"
+        default=None, description="Spike threshold at p95 (forecast + residual_p95)"
     )
     spike_threshold_p99: Optional[float] = Field(
-        None, description="Spike threshold at p99 (forecast + residual_p99)"
+        default=None, description="Spike threshold at p99 (forecast + residual_p99)"
     )
     drop_threshold_p05: Optional[float] = Field(
-        None, description="Drop threshold at p05 (forecast + residual_p05)"
+        default=None, description="Drop threshold at p05 (forecast + residual_p05)"
     )
 
 
 class ForecastHorizonResult(BaseModel):
     """Forecast result for a single horizon."""
 
-    total: Optional[float] = Field(None, description="Point forecast")
-    lower: Optional[float] = Field(None, description="Lower bound (95% CI)")
-    upper: Optional[float] = Field(None, description="Upper bound (95% CI)")
+    total: Optional[float] = Field(default=None, description="Point forecast")
+    lower: Optional[float] = Field(default=None, description="Lower bound (95% CI)")
+    upper: Optional[float] = Field(default=None, description="Upper bound (95% CI)")
 
 
 class ForecastBacktest(BaseModel):
@@ -90,9 +94,15 @@ class ForecastBacktest(BaseModel):
     status: str = Field(
         "pending", description="Backtest status: ok, insufficient_data, pending"
     )
-    window_days: Optional[int] = Field(None, description="Backtest window in days")
-    splits: Optional[int] = Field(None, description="Number of cross-validation splits")
-    step_buckets: Optional[int] = Field(None, description="Step size in buckets")
+    window_days: Optional[int] = Field(
+        default=None, description="Backtest window in days"
+    )
+    splits: Optional[int] = Field(
+        default=None, description="Number of cross-validation splits"
+    )
+    step_buckets: Optional[int] = Field(
+        default=None, description="Step size in buckets"
+    )
 
     metrics: Dict[str, ForecastHorizonMetrics] = Field(
         default_factory=dict,
@@ -114,23 +124,26 @@ class ForecastLatest(BaseModel):
     """
 
     # Core value metrics (produced by _calculate_latest)
-    value: Optional[float] = Field(None, description="Current value in latest bucket")
+    value: Optional[float] = Field(
+        default=None, description="Current value in latest bucket"
+    )
     percentile: Optional[float] = Field(
-        None, description="Current value percentile (0-100) relative to history"
+        default=None, description="Current value percentile (0-100) relative to history"
     )
     anomaly_score: Optional[float] = Field(
-        None, description="Anomaly score (0-1) based on deviation from forecast"
+        default=None, description="Anomaly score (0-1) based on deviation from forecast"
     )
     current_vs_expected: Optional[str] = Field(
-        None, description="Current vs expected ratio (e.g., '1.5x above expected')"
+        default=None,
+        description="Current vs expected ratio (e.g., '1.5x above expected')",
     )
 
     # Optional additional context
     current_bucket_count: Optional[int] = Field(
-        None, description="Count in current bucket (alias for value as int)"
+        default=None, description="Count in current bucket (alias for value as int)"
     )
     ingestion_lag_buckets: Optional[int] = Field(
-        None, description="Data ingestion lag in buckets"
+        default=None, description="Data ingestion lag in buckets"
     )
 
 
@@ -141,18 +154,20 @@ class ForecastSeriesMeta(BaseModel):
     """
 
     history_start_utc: Optional[str] = Field(
-        None, description="Start of history window (ISO format)"
+        default=None, description="Start of history window (ISO format)"
     )
     history_end_utc: Optional[str] = Field(
-        None, description="End of history window (ISO format)"
+        default=None, description="End of history window (ISO format)"
     )
     bucket_minutes: int = Field(default=15, description="Bucket size in minutes")
-    total_buckets: Optional[int] = Field(None, description="Total buckets in window")
+    total_buckets: Optional[int] = Field(
+        default=None, description="Total buckets in window"
+    )
     missing_buckets: Optional[int] = Field(
-        None, description="Number of missing/incomplete buckets"
+        default=None, description="Number of missing/incomplete buckets"
     )
     missing_pct: Optional[float] = Field(
-        None, description="Percentage of missing data (0-1)"
+        default=None, description="Percentage of missing data (0-1)"
     )
     data_completeness: str = Field(
         default="COMPLETE", description="Data completeness: COMPLETE or PARTIAL"
@@ -169,11 +184,16 @@ class ForecastModelMeta(BaseModel):
     """
 
     ets_variant: str = Field(default="ETS(A,N,N)", description="ETS model variant used")
-    alpha: Optional[float] = Field(None, description="Level smoothing parameter")
-    beta: Optional[float] = Field(None, description="Trend smoothing parameter")
-    gamma: Optional[float] = Field(None, description="Seasonal smoothing parameter")
+    alpha: Optional[float] = Field(
+        default=None, description="Level smoothing parameter"
+    )
+    beta: Optional[float] = Field(default=None, description="Trend smoothing parameter")
+    gamma: Optional[float] = Field(
+        default=None, description="Seasonal smoothing parameter"
+    )
     seasonal_period: Optional[int] = Field(
-        None, description="Seasonal period in buckets (e.g., 96 for daily at 15min)"
+        default=None,
+        description="Seasonal period in buckets (e.g., 96 for daily at 15min)",
     )
     damped: bool = Field(default=False, description="Whether trend is damped")
 
@@ -193,24 +213,26 @@ class ForecastTrack(BaseModel):
     """
 
     metric_key: Optional[str] = Field(
-        None, description="Metric key (e.g., 'rule:powershell_encoded')"
+        default=None, description="Metric key (e.g., 'rule:powershell_encoded')"
     )
-    metric_name: Optional[str] = Field(None, description="Human-readable metric name")
+    metric_name: Optional[str] = Field(
+        default=None, description="Human-readable metric name"
+    )
     series_window: Optional[str] = Field(
-        None, description="History window (e.g., '7d', '30d')"
+        default=None, description="History window (e.g., '7d', '30d')"
     )
     history_points: Optional[int] = Field(
-        None, description="Number of historical data points"
+        default=None, description="Number of historical data points"
     )
 
     # Series metadata (spec Section 2)
     series_meta: Optional[ForecastSeriesMeta] = Field(
-        None, description="Series metadata including data quality"
+        default=None, description="Series metadata including data quality"
     )
 
     # Model metadata (spec Section 4)
     model_meta: Optional[ForecastModelMeta] = Field(
-        None, description="ETS model configuration used"
+        default=None, description="ETS model configuration used"
     )
 
     # Multi-horizon forecasts
@@ -236,11 +258,13 @@ class ForecastTrack(BaseModel):
 
     # Backtest results
     backtest: Optional[ForecastBacktest] = Field(
-        None, description="Backtest metrics and thresholds"
+        default=None, description="Backtest metrics and thresholds"
     )
 
     # Latest state
-    latest: Optional[ForecastLatest] = Field(None, description="Current state metrics")
+    latest: Optional[ForecastLatest] = Field(
+        default=None, description="Current state metrics"
+    )
 
 
 class ForecastSeasonality(BaseModel):
@@ -250,7 +274,7 @@ class ForecastSeasonality(BaseModel):
         default="auto", description="Seasonality mode: auto, weekly, daily, none"
     )
     season_length_buckets: Optional[int] = Field(
-        None, description="Season length in buckets"
+        default=None, description="Season length in buckets"
     )
 
 
@@ -258,13 +282,13 @@ class ForecastTracks(BaseModel):
     """Container for all three forecast tracks."""
 
     rule: Optional[ForecastTrack] = Field(
-        None, description="Track A: Rule/Detection frequency"
+        default=None, description="Track A: Rule/Detection frequency"
     )
     ioc: Optional[ForecastTrack] = Field(
-        None, description="Track B: Indicator/IOC sightings"
+        default=None, description="Track B: Indicator/IOC sightings"
     )
     entity: Optional[ForecastTrack] = Field(
-        None, description="Track C: Entity behavior (dynamic by signal type)"
+        default=None, description="Track C: Entity behavior (dynamic by signal type)"
     )
 
 
@@ -274,7 +298,7 @@ class ForecastBundle(BaseModel):
     enabled: bool = Field(default=False, description="Whether forecasting is enabled")
     bucket_minutes: int = Field(default=60, description="Bucket size in minutes")
     seasonality: Optional[ForecastSeasonality] = Field(
-        None, description="Seasonality configuration"
+        default=None, description="Seasonality configuration"
     )
     tracks: ForecastTracks = Field(
         default_factory=lambda: ForecastTracks(), description="All forecast tracks"
@@ -353,8 +377,12 @@ class RunbookRef(BaseModel):
         default="soar",
         description="Source: soar, local, wiki, confluence",
     )
-    title: Optional[str] = Field(None, description="Human-readable title if known")
-    url: Optional[str] = Field(None, description="URL to wiki/KB article if available")
+    title: Optional[str] = Field(
+        default=None, description="Human-readable title if known"
+    )
+    url: Optional[str] = Field(
+        default=None, description="URL to wiki/KB article if available"
+    )
     whitelisted: bool = Field(
         default=False,
         description="If True, treat as authoritative (same as governed templates)",
@@ -369,8 +397,10 @@ class AttachmentMetadata(BaseModel):
     content_type: str = Field(
         default="application/octet-stream", description="MIME type"
     )
-    size_bytes: Optional[int] = Field(None, description="File size in bytes")
-    uploaded_at: Optional[str] = Field(None, description="Upload timestamp (ISO)")
+    size_bytes: Optional[int] = Field(default=None, description="File size in bytes")
+    uploaded_at: Optional[str] = Field(
+        default=None, description="Upload timestamp (ISO)"
+    )
     is_playbook: bool = Field(
         default=False,
         description="True if attachment appears to be a playbook/runbook (e.g., .yaml, .md)",
@@ -388,7 +418,7 @@ class SimilarCase(BaseModel):
 
     case_id: str = Field(..., description="Historical case ID")
     created_at_utc: Optional[str] = Field(
-        None, description="When case was created (ISO format)"
+        default=None, description="When case was created (ISO format)"
     )
     disposition: str = Field(
         default="", description="How the case was resolved (TP, FP, etc.)"
@@ -427,7 +457,7 @@ class SimilarCase(BaseModel):
         description="References to runbooks/playbooks followed in this case",
     )
     tasks_template_id: Optional[str] = Field(
-        None,
+        default=None,
         description="SOAR workflow/task template ID used for this case",
     )
     attachments_metadata: List[AttachmentMetadata] = Field(
@@ -487,22 +517,22 @@ class SignalContext(BaseModel):
 
     # Signal subtype/focus
     signal_subtype: Optional[str] = Field(
-        None, description="Derived signal subtype if applicable"
+        default=None, description="Derived signal subtype if applicable"
     )
     entity_focus: Optional[EntityFocus] = Field(
-        None, description="Entity focus for Track C selection"
+        default=None, description="Entity focus for Track C selection"
     )
 
     # Core entities (extracted from signal)
-    username: Optional[str] = None
-    hostname: Optional[str] = None
-    src_ip: Optional[str] = None
-    dst_ip: Optional[str] = None
+    username: Optional[str] = Field(default=None)
+    hostname: Optional[str] = Field(default=None)
+    src_ip: Optional[str] = Field(default=None)
+    dst_ip: Optional[str] = Field(default=None)
 
     # SIEM-specific
-    alert_rule: Optional[str] = Field(None, description="Alert rule name/ID")
+    alert_rule: Optional[str] = Field(default=None, description="Alert rule name/ID")
     alert_vendor: Optional[str] = Field(
-        None, description="Alert vendor (Splunk, Sentinel, etc.)"
+        default=None, description="Alert vendor (Splunk, Sentinel, etc.)"
     )
 
     # Indicators (any type, key/value)
@@ -640,7 +670,7 @@ class EnrichmentBundle(BaseModel):
 
     # Scope assessment
     scope: Optional[ScopeAssessment] = Field(
-        None, description="Scope/spread assessment"
+        default=None, description="Scope/spread assessment"
     )
 
     # Threat intelligence per indicator
@@ -651,13 +681,13 @@ class EnrichmentBundle(BaseModel):
     ti_summary: str = Field(default="", description="One-line TI summary")
 
     # Asset context
-    asset_context: Optional[AssetContext] = None
+    asset_context: Optional[AssetContext] = Field(default=None)
 
     # Host vulnerabilities
     host_vulns: List[HostVulnerability] = Field(default_factory=list)
 
     # Environment exposure (CVE-led)
-    env_exposure: Optional[EnvironmentExposure] = None
+    env_exposure: Optional[EnvironmentExposure] = Field(default=None)
 
     # Related events timeline
     related_events: List[RelatedEvent] = Field(default_factory=list)
@@ -666,7 +696,7 @@ class EnrichmentBundle(BaseModel):
     )
 
     # Notes on data quality
-    notes: Optional[EnrichmentNotes] = None
+    notes: Optional[EnrichmentNotes] = Field(default=None)
 
 
 # =============================================================================
@@ -785,7 +815,7 @@ class TriageReport(BaseModel):
 
     # Executive summary (optional)
     exec: Optional[ExecutiveSummary] = Field(
-        None, description="Executive/stakeholder summary"
+        default=None, description="Executive/stakeholder summary"
     )
 
     class Config:

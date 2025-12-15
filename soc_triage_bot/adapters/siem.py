@@ -1,7 +1,7 @@
 """SIEM adapter for enrichment."""
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..models import EnrichmentResult, EnrichmentStatus, Signal
 from .base import BaseAdapter, BucketedSeriesResult
@@ -175,7 +175,7 @@ class SIEMAdapter(BaseAdapter):
     # =========================================================================
 
     async def list_runbooks(
-        self, signal_type: str = None, category: str = None
+        self, signal_type: Optional[str] = None, category: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """List available runbooks from SOAR.
 
@@ -307,7 +307,7 @@ class SIEMAdapter(BaseAdapter):
             },
         }
 
-        return mock_runbooks.get(runbook_id)
+        return mock_runbooks.get(runbook_id) or {}
 
     def get_runbook_actions(self, runbook_id: str) -> List[Dict[str, Any]]:
         """Get actions from a runbook (synchronous wrapper).
@@ -500,7 +500,7 @@ class SIEMAdapter(BaseAdapter):
             },
         }
 
-        return mock_cases.get(case_id)
+        return mock_cases.get(case_id) or {}
 
     async def get_case_artifacts(self, case_id: str) -> Dict[str, Any]:
         """Fetch artifacts from a SOAR case.
@@ -643,4 +643,4 @@ steps:
                 ],
             },
         }
-        return mock_cases.get(case_id)
+        return mock_cases.get(case_id) or {}

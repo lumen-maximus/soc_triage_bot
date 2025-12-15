@@ -43,14 +43,26 @@ class DetectionContext(BaseModel):
     Used for forecasting rule-level trends (how often does this rule fire?).
     """
 
-    rule_id: Optional[str] = Field(None, description="Detection rule ID")
-    rule_name: Optional[str] = Field(None, description="Detection rule name")
-    analytic_family: Optional[str] = Field(None, description="Analytic family/category")
-    detection_name: Optional[str] = Field(
-        None, description="Detection name (EDR-specific)"
+    rule_id: Optional[str] = Field(default=None, description="Detection rule ID")
+    rule_name: Optional[str] = Field(default=None, description="Detection rule name")
+    analytic_family: Optional[str] = Field(
+        default=None, description="Analytic family/category"
     )
-    policy_id: Optional[str] = Field(None, description="Policy ID for EDR/vuln scans")
-    technique_id: Optional[str] = Field(None, description="MITRE technique ID if known")
+    detection_name: Optional[str] = Field(
+        default=None, description="Detection name (EDR-specific)"
+    )
+    policy_id: Optional[str] = Field(
+        default=None, description="Policy ID for EDR/vuln scans"
+    )
+    technique_id: Optional[str] = Field(
+        default=None, description="MITRE technique ID if known"
+    )
+    mitre_tactics: List[str] = Field(
+        default_factory=list, description="MITRE ATT&CK tactics"
+    )
+    mitre_techniques: List[str] = Field(
+        default_factory=list, description="MITRE ATT&CK techniques"
+    )
 
 
 class ArtifactContext(BaseModel):
@@ -60,24 +72,24 @@ class ArtifactContext(BaseModel):
     """
 
     # Hashes
-    sha256: Optional[str] = None
-    sha1: Optional[str] = None
-    md5: Optional[str] = None
+    sha256: Optional[str] = Field(default=None)
+    sha1: Optional[str] = Field(default=None)
+    md5: Optional[str] = Field(default=None)
 
     # Network indicators
-    domain: Optional[str] = None
-    ip: Optional[str] = None
-    url: Optional[str] = None
+    domain: Optional[str] = Field(default=None)
+    ip: Optional[str] = Field(default=None)
+    url: Optional[str] = Field(default=None)
 
     # Process/execution indicators
-    process_name: Optional[str] = None
+    process_name: Optional[str] = Field(default=None)
     cmdline_hash: Optional[str] = Field(
-        None, description="Hash of command line for dedup"
+        default=None, description="Hash of command line for dedup"
     )
 
     # Email indicators
-    sender_domain: Optional[str] = None
-    attachment_hash: Optional[str] = None
+    sender_domain: Optional[str] = Field(default=None)
+    attachment_hash: Optional[str] = Field(default=None)
 
     # Generic indicator list (for any type)
     indicator_list: Dict[str, str] = Field(
@@ -93,45 +105,49 @@ class EntityBehaviorContext(BaseModel):
     """
 
     # Host/device entities
-    hostname: Optional[str] = None
-    device_id: Optional[str] = None
-    asset_id: Optional[str] = None
+    hostname: Optional[str] = Field(default=None)
+    device_id: Optional[str] = Field(default=None)
+    asset_id: Optional[str] = Field(default=None)
 
     # User entities
-    username: Optional[str] = None
-    service_account: Optional[str] = None
-    upn: Optional[str] = Field(None, description="User Principal Name")
+    username: Optional[str] = Field(default=None)
+    service_account: Optional[str] = Field(default=None)
+    upn: Optional[str] = Field(default=None, description="User Principal Name")
 
     # Network entities
-    src_ip: Optional[str] = None
-    dst_ip: Optional[str] = None
+    src_ip: Optional[str] = Field(default=None)
+    dst_ip: Optional[str] = Field(default=None)
 
     # Email entities
-    recipient: Optional[str] = None
-    sender: Optional[str] = None
+    recipient: Optional[str] = Field(default=None)
+    sender: Optional[str] = Field(default=None)
 
     # Primary entity for Track C focus
     primary_entity_type: Optional[str] = Field(
-        None, description="Primary entity type for Track C (hostname, username, etc.)"
+        default=None,
+        description="Primary entity type for Track C (hostname, username, etc.)",
     )
     primary_entity_value: Optional[str] = Field(
-        None, description="Primary entity value"
+        default=None, description="Primary entity value"
     )
 
 
 class VulnerabilityContext(BaseModel):
     """Vulnerability-specific context for CVE/vuln signals."""
 
-    cve: Optional[str] = Field(None, description="CVE identifier")
-    cvss_score: Optional[float] = Field(None, ge=0.0, le=10.0)
-    cvss_vector: Optional[str] = None
-    product: Optional[str] = Field(None, description="Affected product")
-    vendor: Optional[str] = Field(None, description="Vendor name")
-    service: Optional[str] = Field(None, description="Affected service")
-    exposure_class: Optional[str] = Field(
-        None, description="internet, internal, isolated"
+    cve: Optional[str] = Field(default=None, description="CVE identifier")
+    cve_id: Optional[str] = Field(
+        default=None, description="CVE identifier (alias for cve)"
     )
-    asset_group: Optional[str] = Field(None, description="Asset group/segment")
+    cvss_score: Optional[float] = Field(default=None, ge=0.0, le=10.0)
+    cvss_vector: Optional[str] = Field(default=None)
+    product: Optional[str] = Field(default=None, description="Affected product")
+    vendor: Optional[str] = Field(default=None, description="Vendor name")
+    service: Optional[str] = Field(default=None, description="Affected service")
+    exposure_class: Optional[str] = Field(
+        default=None, description="internet, internal, isolated"
+    )
+    asset_group: Optional[str] = Field(default=None, description="Asset group/segment")
     known_exploited: bool = Field(default=False, description="In CISA KEV or similar")
     exploit_available: bool = Field(default=False, description="Public exploit exists")
 
@@ -140,11 +156,15 @@ class SignalSource(BaseModel):
     """Source information for a signal."""
 
     system: str = Field(..., description="Source system (splunk, crowdstrike, etc.)")
-    instance: Optional[str] = Field(None, description="Instance/tenant name")
-    rule_id: Optional[str] = Field(None, description="Rule ID (for SIEM/EDR)")
-    rule_name: Optional[str] = Field(None, description="Rule name")
-    feed_name: Optional[str] = Field(None, description="TI feed name (for TI signals)")
-    scanner: Optional[str] = Field(None, description="Scanner name (for vuln signals)")
+    instance: Optional[str] = Field(default=None, description="Instance/tenant name")
+    rule_id: Optional[str] = Field(default=None, description="Rule ID (for SIEM/EDR)")
+    rule_name: Optional[str] = Field(default=None, description="Rule name")
+    feed_name: Optional[str] = Field(
+        default=None, description="TI feed name (for TI signals)"
+    )
+    scanner: Optional[str] = Field(
+        default=None, description="Scanner name (for vuln signals)"
+    )
 
 
 class Signal(BaseModel):
@@ -171,16 +191,16 @@ class Signal(BaseModel):
     # MULTI-TRACK FORECASTING CONTEXT
     # =========================================================================
     detection_context: Optional[DetectionContext] = Field(
-        None, description="Track A: Detection/rule context"
+        default=None, description="Track A: Detection/rule context"
     )
     artifact_context: Optional[ArtifactContext] = Field(
-        None, description="Track B: Indicator/artifact context"
+        default=None, description="Track B: Indicator/artifact context"
     )
     entity_context: Optional[EntityBehaviorContext] = Field(
-        None, description="Track C: Entity behavior context"
+        default=None, description="Track C: Entity behavior context"
     )
     vuln_context: Optional[VulnerabilityContext] = Field(
-        None, description="Vulnerability-specific context"
+        default=None, description="Vulnerability-specific context"
     )
 
     # Entity and indicator fields (also used as fallback for multi-track)

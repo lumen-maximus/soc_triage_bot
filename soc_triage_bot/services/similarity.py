@@ -279,7 +279,7 @@ class SimilarityService:
                 try:
                     signal_vector = self.vectorizer.transform([signal_text])
                     text_sim = float(
-                        cosine_similarity(signal_vector, self.case_vectors[idx])[0][0]
+                        cosine_similarity(signal_vector, self.case_vectors[idx])[0][0]  # type: ignore[index]
                     )
                 except Exception:
                     pass

@@ -120,35 +120,35 @@ class ForecastingService:
         medium_gate = quality_gates.get("MEDIUM")
         high_gate = quality_gates.get("HIGH")
 
-        self.mase_medium_threshold = (
+        self.mase_medium_threshold: float = (
             medium_gate.mase_h6_max
-            if medium_gate
-            else self.config.get("mase_medium_threshold", 1.3)
+            if medium_gate and medium_gate.mase_h6_max is not None
+            else self.config.get("mase_medium_threshold", 1.3) or 1.3
         )
-        self.mase_high_threshold = (
+        self.mase_high_threshold: float = (
             high_gate.mase_h6_max
-            if high_gate
-            else self.config.get("mase_high_threshold", 1.1)
+            if high_gate and high_gate.mase_h6_max is not None
+            else self.config.get("mase_high_threshold", 1.1) or 1.1
         )
-        self.coverage_high_min = (
+        self.coverage_high_min: float = (
             high_gate.coverage95_min
-            if high_gate
-            else self.config.get("coverage_high_min", 0.85)
+            if high_gate and high_gate.coverage95_min is not None
+            else self.config.get("coverage_high_min", 0.85) or 0.85
         )
-        self.coverage_high_max = (
+        self.coverage_high_max: float = (
             high_gate.coverage95_max
-            if high_gate
-            else self.config.get("coverage_high_max", 0.98)
+            if high_gate and high_gate.coverage95_max is not None
+            else self.config.get("coverage_high_max", 0.98) or 0.98
         )
-        self.missing_pct_medium_max = (
+        self.missing_pct_medium_max: float = (
             medium_gate.missing_pct_max
-            if medium_gate
-            else self.config.get("missing_pct_medium_max", 0.05)
+            if medium_gate and medium_gate.missing_pct_max is not None
+            else self.config.get("missing_pct_medium_max", 0.05) or 0.05
         )
-        self.missing_pct_high_max = (
+        self.missing_pct_high_max: float = (
             high_gate.missing_pct_max
-            if high_gate
-            else self.config.get("missing_pct_high_max", 0.02)
+            if high_gate and high_gate.missing_pct_max is not None
+            else self.config.get("missing_pct_high_max", 0.02) or 0.02
         )
 
         # Minimum history requirements from YAML default tracks
@@ -624,9 +624,9 @@ class ForecastingService:
         if (
             mase is not None
             and mase <= self.mase_high_threshold
-            and missing_pct < self.missing_pct_high_threshold
+            and missing_pct < self.missing_pct_high_max
             and coverage95 is not None
-            and self.coverage95_low <= coverage95 <= self.coverage95_high
+            and self.coverage_high_min <= coverage95 <= self.coverage_high_max
         ):
             return RELIABILITY_HIGH
 
@@ -634,7 +634,7 @@ class ForecastingService:
         if (
             mase is not None
             and mase <= self.mase_medium_threshold
-            and missing_pct < self.missing_pct_medium_threshold
+            and missing_pct < self.missing_pct_medium_max
         ):
             return RELIABILITY_MEDIUM
 
