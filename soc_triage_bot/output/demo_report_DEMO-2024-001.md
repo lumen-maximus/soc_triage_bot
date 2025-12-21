@@ -1,14 +1,143 @@
 
 
 
+
+
+
+
+
+# 🔴 TRUE POSITIVE
+
+**Severity:** HIGH | **Confidence:** 87.0% | **Type:** Credential Theft / Lateral Movement
+
+---
+
+## 📋 Case Metadata
+
+| Field | Value |
+|-------|-------|
+| **Case ID** | DEMO-2024-001 |
+| **Status** | OPEN |
+| **Analyst** | Analyst Team Alpha |
+| **Opened** | 2025-12-21T20:08:29.822063+00:00Z |
+---
+
+## 🎯 What Happened
+
+High confidence TRUE POSITIVE based on multi-source TI matches, attack pattern consistency, and correlation with similar confirmed case. Immediate containment recommended.
+
+---
+
+## 👤 Who/Where
+
+| Asset | User | Segment | Criticality |
+|-------|------|---------|-------------|
+| WORKSTATION-042 | jsmith | CORP-WORKSTATIONS | medium |
+
+---
+
+## ⏰ When
+
+```
+Signal Time:    2025-12-21T20:08:29.822063+00:00Z
+Report Time:    2025-12-21T20:08:30.623886+00:00Z
+First Event:    2025-12-21T13:53:30.623946+00:00Z - First DNS query to suspicious-domain.com from WORKSTATION-042
+Latest Event:   2025-12-21T18:38:30.623946+00:00Z - SMB connection from WORKSTATION-042 to WORKSTATION-089
+```
+
+---
+
+## ✅ Actions Required
+
+| Priority | Action | Owner | Status |
+|----------|--------|-------|--------|
+| P1 | IMMEDIATE: Isolate WORKSTATION-042 via EDR network containment | SOC | ☐ In Progress |
+| P1 | IMMEDIATE: Reset credentials for jsmith and admin_svc accounts | IAM | ☐ Open |
+| P2 | Block IOCs (suspicious-domain.com, 10.0.0.5) at firewall and proxy | NetSec | ☐ Open |
+| P2 | Investigate WORKSTATION-089 and SERVER-DC01 for compromise | SOC | ☐ Open |
+| P3 | Capture forensic image of WORKSTATION-042 for IR investigation | IR | ☐ Open |
+---
+
+## 🔍 IOCs (Copy-Paste Ready)
+
+```
+domain: suspicious-domain.com
+ip: 10.0.0.5
+hash: abc123def456789012345678901234567890abcdef
+process: powershell.exe
+```
+
+---
+
+## 📊 Evidence Summary
+
+| ID | Source | Finding |
+|----|--------|---------|
+| 1 | VirusTotal, AbuseIPDB, OTX | 10.0.0.5: malicious (high) |
+| 2 | VirusTotal, Mandiant | suspicious-domain.com: malicious (high) |
+| 3 | VirusTotal, Hybrid Analysis | abc123def456789012345678901234567890abcdef: malicious (medium) |
+---
+
+## 🧠 Why TRUE POSITIVE
+
+- ✓ IP 10.0.0.5 flagged malicious by 3 TI sources (VirusTotal, AbuseIPDB, OTX)
+- ✓ Encoded PowerShell matches Cobalt Strike beacon signature
+- ✓ Domain suspicious-domain.com registered within last 7 days
+- ✓ Parent process explorer.exe spawning encoded powershell is anomalous
+- ✓ ETS Track A shows 5x spike above historical baseline
+**🤖 AI Assessment:** Multi-source TI correlation (3/3 indicators malicious), Cobalt Strike signature match, and timeline consistency with known attack chain strongly support TRUE POSITIVE disposition. Developer context is the only FP driver, but does not explain C2 communication or Mimikatz activity.
+---
+
+## 💼 Business Impact
+
+HIGH IMPACT: Credential theft detected on developer workstation with access to source code repositories and internal systems. Potential for IP theft, supply chain compromise, or further lateral movement to production systems.
+
+**Affected Process:** Software Development - Engineering Team
+---
+
+## 📞 Escalation Log
+
+| Time | Action | Notes |
+|------|--------|-------|
+| 2025-12-21T20:08:30.623886+00:00Z | Initial Triage | Automated analysis completed |
+---
+
+## 🎯 MITRE ATT&CK
+
+**Tactics:** Execution, Defense Evasion, Credential Access
+
+**Techniques:** T1059.001, T1027, T1003.001, T1055
+---
+
+## 📜 Compliance
+
+SOC2/GDPR implications: Developer account has access to customer data processing systems. May require breach notification if data access confirmed. Legal and Privacy teams notified.
+---
+
+## ✓ Closure Criteria
+
+- [ ] All IOCs blocked/quarantined
+- [ ] Affected systems isolated/remediated
+- [ ] User credentials reset (if applicable)
+- [ ] Threat hunt completed for similar activity
+- [ ] Incident ticket created and assigned
+- [ ] Stakeholders notified
+---
+
+<details>
+<summary>📎 Full Audit Report (All 13 Sections, Raw Payload, AI Analysis, ETS Models)</summary>
+
+
+
+
 # SOC Triage Report – DEMO-2024-001
 
 **Signal Type:** SIEM_ALERT
 **Signal Source:** Splunk
 **Signal Name:** PowerShell with Base64 Encoded Command Detected
 **Category:** Execution / Defense Evasion
-**Signal Time (UTC):** 2025-12-15T19:54:45.239564+00:00Z
-**Generated (UTC):** 2025-12-15T19:54:46.041610+00:00Z
+**Signal Time (UTC):** 2025-12-21T20:08:29.822063+00:00Z
+**Generated (UTC):** 2025-12-21T20:08:30.623886+00:00Z
 **Triage Owner:** Analyst Team Alpha
 **Tool Version:** 2.0.0
 **AI Model:** GPT-4o (2024-12-14)
@@ -367,7 +496,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** SPIKE - 5.2x above expected. Anomalous activity detected.
 - **Confidence:** high
 #### 7.1.a Series Metadata
-- **History range:** 2025-12-08T19:54:46.042297+00:00Z → 2025-12-15T19:54:46.042297+00:00Z
+- **History range:** 2025-12-14T20:08:30.623946+00:00Z → 2025-12-21T20:08:30.623946+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 1.2%
 - **Data completeness:** COMPLETE
@@ -411,7 +540,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** ELEVATED - 2.8x above baseline. New indicator emerging.
 - **Confidence:** medium
 #### 7.2.a Series Metadata
-- **History range:** 2025-12-08T19:54:46.042297+00:00Z → 2025-12-15T19:54:46.042297+00:00Z
+- **History range:** 2025-12-14T20:08:30.623946+00:00Z → 2025-12-21T20:08:30.623946+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 3.0%
 - **Data completeness:** COMPLETE
@@ -457,7 +586,7 @@ WORKSTATION-042 has CVE-2024-1234 (AMSI bypass) which may have allowed the encod
 - **Interpretation:** SPIKE - 4.1x above expected. Entity anomaly detected.
 - **Confidence:** high
 #### 7.3.a Series Metadata
-- **History range:** 2025-12-08T19:54:46.042297+00:00Z → 2025-12-15T19:54:46.042297+00:00Z
+- **History range:** 2025-12-14T20:08:30.623946+00:00Z → 2025-12-21T20:08:30.623946+00:00Z
 - **Bucket size:** 60 minutes
 - **Missing data:** 0.0%
 - **Data completeness:** COMPLETE
@@ -518,12 +647,12 @@ Triple-track spike (Rule + IOC + Entity all elevated) is rare and historically c
 
 | Time (UTC) | Source/System | Event Summary | Relevance |
 |------------|--------------|--------------|-----------|
-| 2025-12-15T13:39:46.042297+00:00Z | DNS | First DNS query to suspicious-domain.com from WORKSTATION-042 | Initial contact with C2 infrastructure |
-| 2025-12-15T14:09:46.042297+00:00Z | Proxy | HTTPS POST to suspicious-domain.com/beacon (4.2KB payload) | Likely Cobalt Strike beacon check-in |
-| 2025-12-15T15:24:46.042297+00:00Z | EDR | explorer.exe spawned powershell.exe with encoded args | Primary detection event (this alert) |
-| 2025-12-15T16:39:46.042297+00:00Z | EDR | powershell.exe accessed lsass.exe memory (Mimikatz pattern) | Credential dumping attempt detected |
-| 2025-12-15T17:09:46.042297+00:00Z | AD | jsmith account used for RDP to SERVER-DC01 (unusual) | Potential lateral movement attempt |
-| 2025-12-15T18:24:46.042297+00:00Z | Network | SMB connection from WORKSTATION-042 to WORKSTATION-089 | Lateral movement confirmed to additional host |
+| 2025-12-21T13:53:30.623946+00:00Z | DNS | First DNS query to suspicious-domain.com from WORKSTATION-042 | Initial contact with C2 infrastructure |
+| 2025-12-21T14:23:30.623946+00:00Z | Proxy | HTTPS POST to suspicious-domain.com/beacon (4.2KB payload) | Likely Cobalt Strike beacon check-in |
+| 2025-12-21T15:38:30.623946+00:00Z | EDR | explorer.exe spawned powershell.exe with encoded args | Primary detection event (this alert) |
+| 2025-12-21T16:53:30.623946+00:00Z | EDR | powershell.exe accessed lsass.exe memory (Mimikatz pattern) | Credential dumping attempt detected |
+| 2025-12-21T17:23:30.623946+00:00Z | AD | jsmith account used for RDP to SERVER-DC01 (unusual) | Potential lateral movement attempt |
+| 2025-12-21T18:38:30.623946+00:00Z | Network | SMB connection from WORKSTATION-042 to WORKSTATION-089 | Lateral movement confirmed to additional host |
 
 
 
@@ -634,9 +763,9 @@ FP discount: -13% for developer context and elevated privileges baseline.
 
 | Case ID | Opened (UTC) | Disposition | Overlap | Key Actions Taken |
 |--------|--------------|------------|---------|------------------|
-| CASE-2024-0892 | 2025-12-03T19:54:46.042297+00:00Z | TRUE_POSITIVE | Same IOC (suspicious-domain.com) + Cobalt Strike pattern + Credential dumping | Isolated affected hosts via EDR; Reset credentials for compromised accounts; Blocked IOCs at firewall and proxy; Forensic image captured for investigation; Engaged IR team for full compromise assessment |
-| CASE-2024-0756 | 2025-11-17T19:54:46.042297+00:00Z | TRUE_POSITIVE | Cobalt Strike beacon + Lateral movement pattern | EDR containment of affected hosts; Password reset for affected accounts; IOC blocking across perimeter |
-| CASE-2024-0634 | 2025-10-31T19:54:46.042297+00:00Z | FALSE_POSITIVE | Encoded PowerShell + Developer workstation | Verified script was legitimate build tool; Added exclusion to detection rule |
+| CASE-2024-0892 | 2025-12-09T20:08:30.623946+00:00Z | TRUE_POSITIVE | Same IOC (suspicious-domain.com) + Cobalt Strike pattern + Credential dumping | Isolated affected hosts via EDR; Reset credentials for compromised accounts; Blocked IOCs at firewall and proxy; Forensic image captured for investigation; Engaged IR team for full compromise assessment |
+| CASE-2024-0756 | 2025-11-23T20:08:30.623946+00:00Z | TRUE_POSITIVE | Cobalt Strike beacon + Lateral movement pattern | EDR containment of affected hosts; Password reset for affected accounts; IOC blocking across perimeter |
+| CASE-2024-0634 | 2025-11-06T20:08:30.623946+00:00Z | FALSE_POSITIVE | Encoded PowerShell + Developer workstation | Verified script was legitimate build tool; Added exclusion to detection rule |
 
 
 
@@ -830,4 +959,11 @@ This triage report was automatically generated for signal **DEMO-2024-001**.
 
 
 *Generated by SOC Triage Bot v2.0.0*
-*AI Analysis: 2025-12-15T19:54:48.764799+00:00Z*
+*AI Analysis: 2025-12-21T20:08:33.324895+00:00Z*
+
+
+</details>
+
+---
+
+**Report Generated:** 2025-12-21T20:08:30.623886+00:00Z | **Tool Version:** 2.0.0
