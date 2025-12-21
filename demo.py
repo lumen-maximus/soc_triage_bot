@@ -1063,6 +1063,9 @@ async def run_demo(is_true_positive: bool = True):
     print(
         f"{c('│', Colors.DIM)}   • {c('VulnerabilityAdapter', Colors.WHITE)} - CVE/vulnerability data"
     )
+    print(
+        f"{c('│', Colors.DIM)}   • {c('MockHistoricalAdapter', Colors.WHITE)} - Historical time series (demo mode)"
+    )
     print(f"{c('│', Colors.DIM)}")
     print(f"{c('│', Colors.DIM)} {c('Core Services:', Colors.YELLOW)}")
     print(
@@ -1093,10 +1096,13 @@ async def run_demo(is_true_positive: bool = True):
         f"{c('│', Colors.DIM)}   • {c('AIService', Colors.WHITE)}            - LLM overlay generation"
     )
     print(
+        f"{c('│', Colors.DIM)}   • {c('HistoricalDataService', Colors.WHITE)} - Auto-fetch historical data"
+    )
+    print(
         f"{c('│', Colors.DIM)}   • {c('ReportService', Colors.WHITE)}        - Jinja2 markdown render"
     )
     print(f"{c('│', Colors.DIM)}")
-    print(f"{c('└─', Colors.DIM)} {c('10 services ready', Colors.GREEN)}")
+    print(f"{c('└─', Colors.DIM)} {c('11 services ready', Colors.GREEN)}")
 
     # =========================================================================
     # STAGE 1: SIGNAL INGESTION (SIEMAdapter)
@@ -1198,10 +1204,62 @@ async def run_demo(is_true_positive: bool = True):
     triage_report = create_full_triage_report(signal, is_true_positive)
 
     # =========================================================================
-    # STAGE 3: FORECASTING (ForecastingService)
+    # STAGE 3: HISTORICAL DATA FETCHING (HistoricalDataService)
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 3: FORECASTING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 3: HISTORICAL DATA FETCHING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('HistoricalDataService', Colors.WHITE + Colors.BOLD)}"
+    )
+    print(
+        f"{c('│', Colors.DIM)} {c('Adapter:', Colors.YELLOW)} adapters/{c('MockHistoricalAdapter', Colors.WHITE + Colors.BOLD)} (demo mode)"
+    )
+    print(f"{c('│', Colors.DIM)} Auto-fetching historical time series for forecasting...")
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ HistoricalDataService.fetch_for_signal()', Colors.YELLOW)}"
+    )
+    await asyncio.sleep(0.15)
+    print(f"{c('│', Colors.DIM)}   Signal type: SIEM_ALERT")
+    print(f"{c('│', Colors.DIM)}   History window: 7 days | Bucket size: 60 min")
+    print(f"{c('│', Colors.DIM)}")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ MockHistoricalAdapter.query_time_series()', Colors.YELLOW)} Track A"
+    )
+    await asyncio.sleep(0.1)
+    print(f"{c('│', Colors.DIM)}   Entity: rule_id=RULE-PS-ENCODED-001")
+    print(f"{c('│', Colors.DIM)}   Generated: 168 data points with daily/weekly patterns")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ MockHistoricalAdapter.query_time_series()', Colors.YELLOW)} Track B"
+    )
+    await asyncio.sleep(0.1)
+    print(f"{c('│', Colors.DIM)}   Entity: domain=suspicious-domain.com")
+    print(f"{c('│', Colors.DIM)}   Generated: 168 data points with IOC sighting patterns")
+
+    print(
+        f"{c('│', Colors.DIM)} {c('→ MockHistoricalAdapter.query_time_series()', Colors.YELLOW)} Track C"
+    )
+    await asyncio.sleep(0.1)
+    print(f"{c('│', Colors.DIM)}   Entity: hostname=WORKSTATION-042")
+    print(f"{c('│', Colors.DIM)}   Generated: 168 data points with entity behavior patterns")
+
+    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"{c('│', Colors.DIM)}   {c('MultiTrackHistoricalData:', Colors.GREEN)} 3 tracks × 168 points"
+    )
+    print(
+        f"{c('└─', Colors.DIM)} {c('✓ HistoricalDataService.fetch_for_signal() complete', Colors.GREEN)}"
+    )
+
+    # =========================================================================
+    # STAGE 4: FORECASTING (ForecastingService)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('STAGE 4: FORECASTING', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ForecastingService', Colors.WHITE + Colors.BOLD)}"
@@ -1242,10 +1300,10 @@ async def run_demo(is_true_positive: bool = True):
     )
 
     # =========================================================================
-    # STAGE 4: SIMILARITY SEARCH (SimilarityService)
+    # STAGE 5: SIMILARITY SEARCH (SimilarityService)
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 4: SIMILAR CASE RETRIEVAL', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 5: SIMILAR CASE RETRIEVAL', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('SimilarityService', Colors.WHITE + Colors.BOLD)}"
@@ -1272,12 +1330,12 @@ async def run_demo(is_true_positive: bool = True):
     )
 
     # =========================================================================
-    # STAGE 5: CLASSIFICATION (ClassificationService)
+    # STAGE 6: CLASSIFICATION (ClassificationService)
     # =========================================================================
     # NOTE: Classification MUST happen before action proposal - we need to
     # know TP/FP likelihood before recommending response actions
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 5: CLASSIFICATION', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 6: CLASSIFICATION', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ClassificationService', Colors.WHITE + Colors.BOLD)}"
@@ -1330,10 +1388,10 @@ async def run_demo(is_true_positive: bool = True):
     )
 
     # =========================================================================
-    # STAGE 6: CASE ARTIFACT HARVESTING (CaseArtifactHarvester)
+    # STAGE 7: CASE ARTIFACT HARVESTING (CaseArtifactHarvester)
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 6: SOAR ARTIFACT HARVESTING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 7: SOAR ARTIFACT HARVESTING', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('CaseArtifactHarvester', Colors.WHITE + Colors.BOLD)}"
@@ -1360,12 +1418,12 @@ async def run_demo(is_true_positive: bool = True):
     )
 
     # =========================================================================
-    # STAGE 7: ACTION PROPOSAL (ActionProposalService)
+    # STAGE 8: ACTION PROPOSAL (ActionProposalService)
     # =========================================================================
     # NOTE: Actions are proposed AFTER classification - severity/TP likelihood
     # determines urgency (P1 vs P4) and action scope
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 7: ACTION PROPOSAL', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 8: ACTION PROPOSAL', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ActionProposalService', Colors.WHITE + Colors.BOLD)}"
@@ -1443,12 +1501,12 @@ async def run_demo(is_true_positive: bool = True):
     )
 
     # =========================================================================
-    # STAGE 8: RUNBOOK MATCHING (RunbookRegistry)
+    # STAGE 9: RUNBOOK MATCHING (RunbookRegistry)
     # =========================================================================
     # NOTE: Runbooks matched after classification - threat type informs which
     # playbooks are relevant
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 8: RUNBOOK MATCHING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 9: RUNBOOK MATCHING', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('RunbookRegistry', Colors.WHITE + Colors.BOLD)}"
@@ -1475,10 +1533,10 @@ async def run_demo(is_true_positive: bool = True):
     )
 
     # =========================================================================
-    # STAGE 9: AI OVERLAY (AIService)
+    # STAGE 10: AI OVERLAY (AIService)
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 9: AI OVERLAY GENERATION', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 10: AI OVERLAY GENERATION', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('AIService', Colors.WHITE + Colors.BOLD)}"
@@ -1529,10 +1587,10 @@ async def run_demo(is_true_positive: bool = True):
     )
 
     # =========================================================================
-    # STAGE 10: REPORT RENDERING (ReportService)
+    # STAGE 11: REPORT RENDERING (ReportService)
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 10: REPORT RENDERING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('STAGE 11: REPORT RENDERING', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
         f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ReportService', Colors.WHITE + Colors.BOLD)}"
@@ -1567,7 +1625,7 @@ async def run_demo(is_true_positive: bool = True):
     print(f"{c('━' * 70, Colors.GREEN)}")
     print(f"{c('│', Colors.DIM)}")
     print(
-        f"{c('│', Colors.DIM)} {c('Services Invoked:', Colors.YELLOW)} 10 (in logical order)"
+        f"{c('│', Colors.DIM)} {c('Services Invoked:', Colors.YELLOW)} 11 (in logical order)"
     )
     print(
         f"{c('│', Colors.DIM)}   1. SIEMAdapter.ingest()              → Signal ingestion"
@@ -1576,31 +1634,37 @@ async def run_demo(is_true_positive: bool = True):
         f"{c('│', Colors.DIM)}   2. EnrichmentService.enrich()        → Context from 5 adapters"
     )
     print(
-        f"{c('│', Colors.DIM)}   3. ForecastingService.run_all_tracks()→ ETS anomaly detection"
+        f"{c('│', Colors.DIM)}   3. HistoricalDataService.fetch()     → Auto-fetch historical data"
     )
     print(
-        f"{c('│', Colors.DIM)}   4. SimilarityService.find_similar()  → Historical case matching"
+        f"{c('│', Colors.DIM)}      {c('MockHistoricalAdapter (demo) / Real adapters (live)', Colors.DIM)}"
     )
     print(
-        f"{c('│', Colors.DIM)}   5. ClassificationService.classify()  → TP/FP determination"
+        f"{c('│', Colors.DIM)}   4. ForecastingService.run_all_tracks()→ ETS anomaly detection"
     )
     print(
-        f"{c('│', Colors.DIM)}   6. CaseArtifactHarvester.harvest()   → Extract SOAR artifacts"
+        f"{c('│', Colors.DIM)}   5. SimilarityService.find_similar()  → Historical case matching"
     )
     print(
-        f"{c('│', Colors.DIM)}   7. ActionProposalService.propose()   → 5-source recommendations"
+        f"{c('│', Colors.DIM)}   6. ClassificationService.classify()  → TP/FP determination"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   7. CaseArtifactHarvester.harvest()   → Extract SOAR artifacts"
+    )
+    print(
+        f"{c('│', Colors.DIM)}   8. ActionProposalService.propose()   → 5-source recommendations"
     )
     print(
         f"{c('│', Colors.DIM)}      {c('seeded > case_linked > learned > contextual > template', Colors.DIM)}"
     )
     print(
-        f"{c('│', Colors.DIM)}   8. RunbookRegistry.match()           → Playbook selection"
+        f"{c('│', Colors.DIM)}   9. RunbookRegistry.match()           → Playbook selection"
     )
     print(
-        f"{c('│', Colors.DIM)}   9. AIService.generate_overlay()      → LLM enhancement"
+        f"{c('│', Colors.DIM)}  10. AIService.generate_overlay()      → LLM enhancement"
     )
     print(
-        f"{c('│', Colors.DIM)}  10. ReportService.generate_report()   → Final markdown"
+        f"{c('│', Colors.DIM)}  11. ReportService.generate_report()   → Final markdown"
     )
     print(f"{c('│', Colors.DIM)}")
     print(
