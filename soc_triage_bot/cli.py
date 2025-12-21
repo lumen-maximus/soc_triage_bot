@@ -439,13 +439,17 @@ def triage(
     # Execute triage with step indicators
     show_step(1, "Running concurrent enrichments...", "running")
     show_step(
-        2, "Analyzing historical patterns...", "running" if forecast_enabled else "skip"
+        2, "Fetching historical data..." if demo else "Checking historical data sources...",
+        "running" if forecast_enabled else "skip"
     )
-    show_step(3, "Finding similar cases...", "running")
-    show_step(4, "Classifying signal...", "running")
-    show_step(5, "Generating recommendations...", "running")
+    show_step(
+        3, "Running ETS forecasting...", "running" if forecast_enabled else "skip"
+    )
+    show_step(4, "Finding similar cases...", "running")
+    show_step(5, "Classifying signal...", "running")
+    show_step(6, "Generating recommendations...", "running")
     if ai_service:
-        show_step(6, "Generating AI overlay...", "running")
+        show_step(7, "Generating AI overlay...", "running")
 
     result = asyncio.run(
         execute_triage(signal, hist_data, forecast_enabled, ai_enabled=ai_service, demo_mode=demo)
