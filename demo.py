@@ -30,6 +30,7 @@ Appendix: Raw payload
 
 """
 
+import argparse
 import asyncio
 import io
 import json
@@ -288,7 +289,7 @@ def create_sample_signal() -> Signal:
     )
 
 
-def create_full_triage_report(signal: Signal) -> TriageReport:
+def create_full_triage_report(signal: Signal, is_true_positive: bool = True) -> TriageReport:
     """Create a TriageReport with all sections fully populated."""
 
     # =========================================================================
@@ -340,36 +341,67 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
     # =========================================================================
     # CLASSIFICATION RESULT (r.classification) - Section 9
     # =========================================================================
-    classification = ClassificationResult(
-        disposition="TRUE_POSITIVE",
-        tp_likelihood=0.87,
-        severity="high",
-        confidence="high",
-        incident_type="Credential Theft / Lateral Movement",
-        mitre=MitreMapping(
-            tactics=["Execution", "Defense Evasion", "Credential Access"],
-            techniques=["T1059.001", "T1027", "T1003.001", "T1055"],
-        ),
-        reasons_tp=[
-            "IP 10.0.0.5 flagged malicious by 3 TI sources (VirusTotal, AbuseIPDB, OTX)",
-            "Encoded PowerShell matches Cobalt Strike beacon signature",
-            "Domain suspicious-domain.com registered within last 7 days",
-            "Parent process explorer.exe spawning encoded powershell is anomalous",
-            "ETS Track A shows 5x spike above historical baseline",
-            "Similar case CASE-2024-0892 confirmed as Cobalt Strike compromise",
-        ],
-        reasons_fp=[
-            "User jsmith is a developer with elevated privileges",
-            "Host WORKSTATION-042 is a development workstation (may use encoded scripts)",
-            "No confirmed data exfiltration observed yet",
-        ],
-        triage_judgment=(
-            "High confidence TRUE POSITIVE based on multi-source TI matches, "
-            "attack pattern consistency, and correlation with similar confirmed case. "
-            "Immediate containment recommended."
-        ),
-        runbook_ref="RB-MAL-003 Malware/Cobalt Strike Response",
-    )
+    if is_true_positive:
+        classification = ClassificationResult(
+            disposition="TRUE_POSITIVE",
+            tp_likelihood=0.87,
+            severity="high",
+            confidence="high",
+            incident_type="Credential Theft / Lateral Movement",
+            mitre=MitreMapping(
+                tactics=["Execution", "Defense Evasion", "Credential Access"],
+                techniques=["T1059.001", "T1027", "T1003.001", "T1055"],
+            ),
+            reasons_tp=[
+                "IP 10.0.0.5 flagged malicious by 3 TI sources (VirusTotal, AbuseIPDB, OTX)",
+                "Encoded PowerShell matches Cobalt Strike beacon signature",
+                "Domain suspicious-domain.com registered within last 7 days",
+                "Parent process explorer.exe spawning encoded powershell is anomalous",
+                "ETS Track A shows 5x spike above historical baseline",
+                "Similar case CASE-2024-0892 confirmed as Cobalt Strike compromise",
+            ],
+            reasons_fp=[
+                "User jsmith is a developer with elevated privileges",
+                "Host WORKSTATION-042 is a development workstation (may use encoded scripts)",
+                "No confirmed data exfiltration observed yet",
+            ],
+            triage_judgment=(
+                "High confidence TRUE POSITIVE based on multi-source TI matches, "
+                "attack pattern consistency, and correlation with similar confirmed case. "
+                "Immediate containment recommended."
+            ),
+            runbook_ref="RB-MAL-003 Malware/Cobalt Strike Response",
+        )
+    else:
+        classification = ClassificationResult(
+            disposition="FALSE_POSITIVE",
+            tp_likelihood=0.15,
+            severity="low",
+            confidence="high",
+            incident_type="Benign Developer Activity",
+            mitre=MitreMapping(
+                tactics=["Execution"],
+                techniques=["T1059.001"],
+            ),
+            reasons_tp=[
+                "Encoded PowerShell command detected",
+                "Process spawned from explorer.exe",
+            ],
+            reasons_fp=[
+                "User jsmith is a developer with elevated privileges and known to use encoded scripts",
+                "Host WORKSTATION-042 is a development workstation with CI/CD tooling",
+                "Domain contacted is internal build infrastructure (verified)",
+                "Similar pattern seen previously and confirmed as legitimate automation (CASE-2024-0634)",
+                "No malicious indicators from threat intelligence sources",
+                "Activity matches normal working hours pattern for this user",
+            ],
+            triage_judgment=(
+                "High confidence FALSE POSITIVE. Activity consistent with legitimate developer "
+                "automation and CI/CD tooling. Similar case confirmed as benign. "
+                "Recommend adding to allowlist for this user/host combination."
+            ),
+            runbook_ref="RB-FP-001 False Positive Tuning",
+        )
 
     # =========================================================================
     # FORECAST BUNDLE (r.forecast) - Section 7
@@ -993,10 +1025,15 @@ def create_full_triage_report(signal: Signal) -> TriageReport:
 # The demo now uses AIService for both real AI and mock overlay generation
 
 
-async def run_demo():
-    """Execute the full triage demo showing ALL services in the pipeline."""
+async def run_demo(is_true_positive: bool = True):
+    """Execute the full triage demo showing ALL services in the pipeline.
+
+    Args:
+        is_true_positive: If True, generate a True Positive report. If False, generate a False Positive report.
+    """
     # Display the SOC Agent banner
-    show_banner(subtitle="Full Pipeline Demo (All Services)")
+    report_type = "True Positive" if is_true_positive else "False Positive"
+    show_banner(subtitle=f"Full Pipeline Demo ({report_type} Report)")
 
     print(
         f"  {c('▸', Colors.TEAL)} {c('Service Pipeline Execution', Colors.BOLD + Colors.WHITE)}"
@@ -1158,7 +1195,7 @@ async def run_demo():
     )
 
     # Build the triage report with all enriched data
-    triage_report = create_full_triage_report(signal)
+    triage_report = create_full_triage_report(signal, is_true_positive)
 
     # =========================================================================
     # STAGE 3: FORECASTING (ForecastingService)
@@ -1255,21 +1292,38 @@ async def run_demo():
     )
     await asyncio.sleep(0.15)
     print(f"{c('│', Colors.DIM)}   Inputs: enrichments, similar_cases, forecast_bundle")
-    print(
-        f"{c('│', Colors.DIM)}   TI Score: {c('+35%', Colors.GREEN)} | Pattern: {c('+25%', Colors.GREEN)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   ETS: {c('+15%', Colors.GREEN)} | Similar: {c('+12%', Colors.GREEN)} | FP: {c('-13%', Colors.YELLOW)}"
-    )
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('│', Colors.DIM)}   ┌──────────────────────────────────┐")
-    print(
-        f"{c('│', Colors.DIM)}   │  {c('TRUE POSITIVE', Colors.RED + Colors.BOLD)} @ {c('87%', Colors.WHITE)} likelihood │"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   │  Severity: {c('HIGH', Colors.RED)} | Confidence: {c('HIGH', Colors.GREEN)} │"
-    )
-    print(f"{c('│', Colors.DIM)}   └──────────────────────────────────┘")
+    if is_true_positive:
+        print(
+            f"{c('│', Colors.DIM)}   TI Score: {c('+35%', Colors.GREEN)} | Pattern: {c('+25%', Colors.GREEN)}"
+        )
+        print(
+            f"{c('│', Colors.DIM)}   ETS: {c('+15%', Colors.GREEN)} | Similar: {c('+12%', Colors.GREEN)} | FP: {c('-13%', Colors.YELLOW)}"
+        )
+        print(f"{c('│', Colors.DIM)}")
+        print(f"{c('│', Colors.DIM)}   ┌──────────────────────────────────┐")
+        print(
+            f"{c('│', Colors.DIM)}   │  {c('TRUE POSITIVE', Colors.RED + Colors.BOLD)} @ {c('87%', Colors.WHITE)} likelihood │"
+        )
+        print(
+            f"{c('│', Colors.DIM)}   │  Severity: {c('HIGH', Colors.RED)} | Confidence: {c('HIGH', Colors.GREEN)} │"
+        )
+        print(f"{c('│', Colors.DIM)}   └──────────────────────────────────┘")
+    else:
+        print(
+            f"{c('│', Colors.DIM)}   TI Score: {c('-5%', Colors.YELLOW)} | Pattern: {c('-15%', Colors.YELLOW)}"
+        )
+        print(
+            f"{c('│', Colors.DIM)}   ETS: {c('-10%', Colors.YELLOW)} | Similar: {c('-25%', Colors.GREEN)} | FP: {c('+40%', Colors.GREEN)}"
+        )
+        print(f"{c('│', Colors.DIM)}")
+        print(f"{c('│', Colors.DIM)}   ┌───────────────────────────────────┐")
+        print(
+            f"{c('│', Colors.DIM)}   │  {c('FALSE POSITIVE', Colors.GREEN + Colors.BOLD)} @ {c('15%', Colors.WHITE)} TP likelihood │"
+        )
+        print(
+            f"{c('│', Colors.DIM)}   │  Severity: {c('LOW', Colors.GREEN)} | Confidence: {c('HIGH', Colors.GREEN)}  │"
+        )
+        print(f"{c('│', Colors.DIM)}   └───────────────────────────────────┘")
     print(f"{c('│', Colors.DIM)}")
     print(
         f"{c('└─', Colors.DIM)} {c('✓ ClassificationService.classify_extended() complete', Colors.GREEN)}"
@@ -1462,9 +1516,14 @@ async def run_demo():
     )
 
     print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('│', Colors.DIM)}   AI Assessment: {c('LIKELY TRUE POSITIVE', Colors.RED)}"
-    )
+    if is_true_positive:
+        print(
+            f"{c('│', Colors.DIM)}   AI Assessment: {c('LIKELY TRUE POSITIVE', Colors.RED)}"
+        )
+    else:
+        print(
+            f"{c('│', Colors.DIM)}   AI Assessment: {c('LIKELY FALSE POSITIVE', Colors.GREEN)}"
+        )
     print(
         f"{c('└─', Colors.DIM)} {c('✓ AIService.generate_overlay() complete', Colors.GREEN)}"
     )
@@ -1624,7 +1683,10 @@ async def run_demo():
     # Print section summary
     print("\n--- Report Sections Populated ---")
     print("  ✓ Header: Signal info, timestamps")
-    print("  ✓ Decision Banner: TRUE_POSITIVE @ 87% TP likelihood")
+    if is_true_positive:
+        print("  ✓ Decision Banner: TRUE_POSITIVE @ 87% TP likelihood")
+    else:
+        print("  ✓ Decision Banner: FALSE_POSITIVE @ 15% TP likelihood")
     print("  ✓ §1 Summary: SOC + Stakeholder overview")
     print("  ✓ §2 Action Plan: 7 recommendations with AI enhancements:")
     print("      - 3 AI next checks (query templates)")
@@ -1658,6 +1720,21 @@ async def run_demo():
 
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="SOC Triage Bot Demo - Generate True Positive or False Positive reports"
+    )
+    parser.add_argument(
+        "--type",
+        choices=["true", "false"],
+        default="true",
+        help="Report type: 'true' for True Positive, 'false' for False Positive (default: true)",
+    )
+    args = parser.parse_args()
+
+    # Determine if this is a true positive report
+    is_true_positive = args.type == "true"
+
     # Capture console output (stdout and stderr) to buffer while also displaying to terminal
     console_buffer = io.StringIO()
     original_stdout = sys.stdout
@@ -1666,7 +1743,7 @@ if __name__ == "__main__":
     sys.stderr = TeeIO(original_stderr, console_buffer)
 
     try:
-        asyncio.run(run_demo())
+        asyncio.run(run_demo(is_true_positive))
     finally:
         # Restore original stdout and stderr
         sys.stdout = original_stdout
