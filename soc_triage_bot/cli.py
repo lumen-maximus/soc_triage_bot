@@ -1021,54 +1021,40 @@ def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
             }
             artifacts_data.append(artifact_info)
             
-            # Extract CEF fields to entities
+            # Extract CEF fields to entities using a mapping dictionary
             cef = artifact.get("cef", {})
             
-            # Network entities
-            if "sourceAddress" in cef and cef["sourceAddress"]:
-                entities.setdefault("ip", []).append(cef["sourceAddress"])
-            if "destinationAddress" in cef and cef["destinationAddress"]:
-                entities.setdefault("ip", []).append(cef["destinationAddress"])
-            if "destinationHostName" in cef and cef["destinationHostName"]:
-                entities.setdefault("hostname", []).append(cef["destinationHostName"])
-            if "sourceHostName" in cef and cef["sourceHostName"]:
-                entities.setdefault("hostname", []).append(cef["sourceHostName"])
-            if "destinationDnsDomain" in cef and cef["destinationDnsDomain"]:
-                entities.setdefault("domain", []).append(cef["destinationDnsDomain"])
-            if "sourceDnsDomain" in cef and cef["sourceDnsDomain"]:
-                entities.setdefault("domain", []).append(cef["sourceDnsDomain"])
-            if "requestURL" in cef and cef["requestURL"]:
-                entities.setdefault("url", []).append(cef["requestURL"])
+            # CEF field to entity type mapping
+            cef_field_mapping = {
+                # Network entities
+                "sourceAddress": "ip",
+                "destinationAddress": "ip",
+                "destinationHostName": "hostname",
+                "sourceHostName": "hostname",
+                "destinationDnsDomain": "domain",
+                "sourceDnsDomain": "domain",
+                "requestURL": "url",
+                # User entities
+                "suser": "user",
+                "duser": "user",
+                # File/Hash entities
+                "fileHashSha256": "hash",
+                "fileHashSha1": "hash",
+                "fileHashMd5": "hash",
+                "filePath": "file",
+                "fileName": "file",
+                # Process entities
+                "deviceProcessName": "process",
+                "sourceProcessName": "process",
+                # Email entities
+                "senderAddress": "email",
+                "recipientAddress": "email",
+            }
             
-            # User entities
-            if "suser" in cef and cef["suser"]:
-                entities.setdefault("user", []).append(cef["suser"])
-            if "duser" in cef and cef["duser"]:
-                entities.setdefault("user", []).append(cef["duser"])
-            
-            # File/Hash entities
-            if "fileHashSha256" in cef and cef["fileHashSha256"]:
-                entities.setdefault("hash", []).append(cef["fileHashSha256"])
-            if "fileHashSha1" in cef and cef["fileHashSha1"]:
-                entities.setdefault("hash", []).append(cef["fileHashSha1"])
-            if "fileHashMd5" in cef and cef["fileHashMd5"]:
-                entities.setdefault("hash", []).append(cef["fileHashMd5"])
-            if "filePath" in cef and cef["filePath"]:
-                entities.setdefault("file", []).append(cef["filePath"])
-            if "fileName" in cef and cef["fileName"]:
-                entities.setdefault("file", []).append(cef["fileName"])
-            
-            # Process entities
-            if "deviceProcessName" in cef and cef["deviceProcessName"]:
-                entities.setdefault("process", []).append(cef["deviceProcessName"])
-            if "sourceProcessName" in cef and cef["sourceProcessName"]:
-                entities.setdefault("process", []).append(cef["sourceProcessName"])
-            
-            # Email entities
-            if "senderAddress" in cef and cef["senderAddress"]:
-                entities.setdefault("email", []).append(cef["senderAddress"])
-            if "recipientAddress" in cef and cef["recipientAddress"]:
-                entities.setdefault("email", []).append(cef["recipientAddress"])
+            # Extract entities based on mapping
+            for cef_field, entity_type in cef_field_mapping.items():
+                if cef_field in cef and cef[cef_field]:
+                    entities.setdefault(entity_type, []).append(cef[cef_field])
     
     # Deduplicate entities
     for entity_type in entities:
@@ -1101,8 +1087,9 @@ def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
         metadata["artifacts"] = artifacts_data
     
     # Note if artifacts are missing but expected
-    if data.get("artifact_count", 0) > 0 and not artifacts:
-        metadata["artifacts_note"] = f"Container indicates {data.get('artifact_count')} artifacts but none included in JSON"
+    artifact_count = data.get("artifact_count", 0)
+    if artifact_count > 0 and not artifacts:
+        metadata["artifacts_note"] = f"Container indicates {artifact_count} artifacts but none included in JSON"
     
     # Build signal
     signal = Signal(
