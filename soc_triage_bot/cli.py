@@ -933,8 +933,207 @@ def _select_entity_focus(signal: Signal, entities: Dict[str, Any]) -> str:
     return "hostname"  # Default fallback
 
 
+def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
+    """Auto-detect if JSON is a SOAR container and parse it.
+    
+    Detects SOAR containers by checking for distinctive fields:
+    - source_data_identifier (unique to SOAR)
+    - container_update_time (unique to SOAR)
+    - artifact_count (unique to SOAR)
+    - Container label field with SOAR-style labels
+    
+    If 2+ of these fields are present, treat as SOAR container.
+    
+    Args:
+        data: JSON dictionary to check
+        
+    Returns:
+        Signal if SOAR container detected, None otherwise
+    """
+    # Check for SOAR-specific fields
+    soar_indicators = 0
+    
+    if "source_data_identifier" in data:
+        soar_indicators += 1
+    if "container_update_time" in data:
+        soar_indicators += 1
+    if "artifact_count" in data:
+        soar_indicators += 1
+    if "label" in data:
+        soar_indicators += 1
+    
+    # Need at least 2 indicators to be confident it's a SOAR container
+    if soar_indicators < 2:
+        return None
+    
+    # Log detection
+    show_info(f"{c('Detected SOAR container', Colors.GREEN + Colors.BOLD)} - auto-parsing")
+    
+    # Extract container fields
+    container_id = data.get("id")
+    container_name = data.get("name", "Untitled SOAR Container")
+    container_description = data.get("description", "")
+    container_severity = data.get("severity", "medium").lower()
+    container_tags = data.get("tags", [])
+    container_label = data.get("label", "incident")
+    
+    # Map SOAR label to signal_type
+    label_to_signal_type = {
+        "incident": SignalType.SIEM_ALERT,
+        "intelligence": SignalType.IOC,
+        "vulnerabilities": SignalType.CVE,
+        "email": SignalType.USER_REPORT,
+    }
+    signal_type = label_to_signal_type.get(container_label, SignalType.SIEM_ALERT)
+    
+    # Parse timestamp
+    timestamp_str = data.get("create_time")
+    if timestamp_str:
+        timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+    else:
+        timestamp = datetime.utcnow()
+    
+    # Build source
+    source = SignalSource(
+        system="soar",
+        rule_id=data.get("source_data_identifier"),
+        rule_name=container_name,
+    )
+    
+    # Extract entities from artifacts
+    entities = {}
+    artifacts_data = []
+    
+    # Check for artifacts in data.artifacts or data.data.artifacts
+    artifacts = data.get("artifacts", [])
+    if not artifacts and "data" in data:
+        artifacts = data.get("data", {}).get("artifacts", [])
+    
+    # Process artifacts and extract CEF fields
+    if artifacts:
+        show_info(f"Processing {c(str(len(artifacts)), Colors.CYAN)} artifacts from SOAR container")
+        
+        for artifact in artifacts:
+            artifact_info = {
+                "id": artifact.get("id"),
+                "name": artifact.get("name"),
+                "cef": artifact.get("cef", {}),
+            }
+            artifacts_data.append(artifact_info)
+            
+            # Extract CEF fields to entities
+            cef = artifact.get("cef", {})
+            
+            # Network entities
+            if "sourceAddress" in cef and cef["sourceAddress"]:
+                entities.setdefault("ip", []).append(cef["sourceAddress"])
+            if "destinationAddress" in cef and cef["destinationAddress"]:
+                entities.setdefault("ip", []).append(cef["destinationAddress"])
+            if "destinationHostName" in cef and cef["destinationHostName"]:
+                entities.setdefault("hostname", []).append(cef["destinationHostName"])
+            if "sourceHostName" in cef and cef["sourceHostName"]:
+                entities.setdefault("hostname", []).append(cef["sourceHostName"])
+            if "destinationDnsDomain" in cef and cef["destinationDnsDomain"]:
+                entities.setdefault("domain", []).append(cef["destinationDnsDomain"])
+            if "sourceDnsDomain" in cef and cef["sourceDnsDomain"]:
+                entities.setdefault("domain", []).append(cef["sourceDnsDomain"])
+            if "requestURL" in cef and cef["requestURL"]:
+                entities.setdefault("url", []).append(cef["requestURL"])
+            
+            # User entities
+            if "suser" in cef and cef["suser"]:
+                entities.setdefault("user", []).append(cef["suser"])
+            if "duser" in cef and cef["duser"]:
+                entities.setdefault("user", []).append(cef["duser"])
+            
+            # File/Hash entities
+            if "fileHashSha256" in cef and cef["fileHashSha256"]:
+                entities.setdefault("hash", []).append(cef["fileHashSha256"])
+            if "fileHashSha1" in cef and cef["fileHashSha1"]:
+                entities.setdefault("hash", []).append(cef["fileHashSha1"])
+            if "fileHashMd5" in cef and cef["fileHashMd5"]:
+                entities.setdefault("hash", []).append(cef["fileHashMd5"])
+            if "filePath" in cef and cef["filePath"]:
+                entities.setdefault("file", []).append(cef["filePath"])
+            if "fileName" in cef and cef["fileName"]:
+                entities.setdefault("file", []).append(cef["fileName"])
+            
+            # Process entities
+            if "deviceProcessName" in cef and cef["deviceProcessName"]:
+                entities.setdefault("process", []).append(cef["deviceProcessName"])
+            if "sourceProcessName" in cef and cef["sourceProcessName"]:
+                entities.setdefault("process", []).append(cef["sourceProcessName"])
+            
+            # Email entities
+            if "senderAddress" in cef and cef["senderAddress"]:
+                entities.setdefault("email", []).append(cef["senderAddress"])
+            if "recipientAddress" in cef and cef["recipientAddress"]:
+                entities.setdefault("email", []).append(cef["recipientAddress"])
+    
+    # Deduplicate entities
+    for entity_type in entities:
+        entities[entity_type] = list(set(entities[entity_type]))
+    
+    # Log extracted entities
+    if entities:
+        entity_summary = ", ".join([f"{len(v)} {k}" for k, v in entities.items()])
+        show_info(f"Extracted entities: {c(entity_summary, Colors.CYAN)}")
+    
+    # Build metadata with all SOAR-specific fields
+    metadata = {
+        "soar_id": container_id,
+        "soar_label": container_label,
+        "soar_status": data.get("status"),
+        "soar_sensitivity": data.get("sensitivity"),
+        "soar_owner": data.get("owner"),
+        "soar_hash": data.get("hash"),
+        "soar_asset_name": data.get("asset_name"),
+        "soar_open_time": data.get("open_time"),
+        "soar_close_time": data.get("close_time"),
+        "soar_due_time": data.get("due_time"),
+        "soar_kill_chain": data.get("kill_chain"),
+        "artifact_count": data.get("artifact_count"),
+        "source_data_identifier": data.get("source_data_identifier"),
+    }
+    
+    # Store artifacts in metadata
+    if artifacts_data:
+        metadata["artifacts"] = artifacts_data
+    
+    # Note if artifacts are missing but expected
+    if data.get("artifact_count", 0) > 0 and not artifacts:
+        metadata["artifacts_note"] = f"Container indicates {data.get('artifact_count')} artifacts but none included in JSON"
+    
+    # Build signal
+    signal = Signal(
+        signal_id=f"soar-{container_id}" if container_id else f"soar-{uuid.uuid4().hex[:8]}",
+        signal_type=signal_type,
+        timestamp=timestamp,
+        source=source,
+        title=container_name,
+        description=container_description,
+        severity=container_severity,
+        entities=entities,
+        tags=container_tags,
+        raw_data=data,  # Preserve full SOAR container data
+        metadata=metadata,
+    )
+    
+    return signal
+
+
 def parse_signal_from_json(data: dict) -> Signal:
-    """Parse a signal from JSON data."""
+    """Parse a signal from JSON data.
+    
+    Attempts to detect and parse SOAR containers first, then falls back
+    to standard signal format.
+    """
+    # Try SOAR container detection first
+    soar_signal = detect_and_parse_soar_container(data)
+    if soar_signal:
+        return soar_signal
+    
+    # Fall back to existing signal parsing logic
     signal_type = SignalType(data.get("signal_type", "siem_alert"))
 
     # Parse timestamp
