@@ -1,7 +1,7 @@
 """Tests for historical data service and automatic fetching."""
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -23,7 +23,7 @@ async def test_mock_historical_adapter():
     assert adapter.name == "mock_historical"
     assert adapter.supports_historical_query() is True
     
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=7)
     
     result = await adapter.query_time_series(
@@ -57,7 +57,7 @@ async def test_historical_data_service_fetch():
     signal = Signal(
         signal_id="test-001",
         signal_type=SignalType.SIEM_ALERT,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         source=SignalSource(
             system="test", rule_id="RULE-001", rule_name="Test Rule"
         ),
@@ -99,7 +99,7 @@ async def test_historical_data_service_no_adapters():
     signal = Signal(
         signal_id="test-001",
         signal_type=SignalType.SIEM_ALERT,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         source=SignalSource(system="test", rule_name="Test Rule"),
         title="Test Alert",
         description="Test description",
@@ -121,7 +121,7 @@ async def test_historical_data_service_no_entity_match():
     signal = Signal(
         signal_id="test-001",
         signal_type=SignalType.SIEM_ALERT,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         source=SignalSource(system="test", rule_name="Test Rule"),
         title="Test Alert",
         description="Test description",

@@ -413,7 +413,7 @@ class ForecastingService:
             ratio = current / forecast
             if ratio > 1.5:
                 current_vs_expected = f"{ratio:.1f}x above expected"
-            elif ratio < 0.5 and ratio > 0:
+            elif 0 < ratio < 0.5:
                 current_vs_expected = f"{1/ratio:.1f}x below expected"
             elif ratio == 0:
                 current_vs_expected = "zero (expected non-zero)"

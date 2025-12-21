@@ -3,8 +3,8 @@
 Fetches historical time series data from adapters that support historical queries.
 """
 
-from datetime import datetime, timedelta
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Tuple
 
 from ..adapters.base_historical import HistoricalQueryCapable, TimeSeriesResult
 from ..config import get_forecast_config, get_signal_type_config
@@ -48,7 +48,7 @@ class HistoricalDataService:
         history_days = self.forecast_config.history_window_days_default
         bucket_minutes = self.forecast_config.bucket_minutes_default
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(days=history_days)
         
         # Fetch each track
@@ -153,7 +153,7 @@ class HistoricalDataService:
         self,
         signal: Signal,
         track_config
-    ) -> tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """Extract entity key and value from signal using YAML config.
         
         Args:
