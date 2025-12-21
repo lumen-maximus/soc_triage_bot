@@ -8,7 +8,7 @@ No legacy fallbacks or backward compatibility with old Signal/Classification mod
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -17,7 +17,8 @@ from ..models.triage_report import TriageReport
 
 # Default template directory (relative to this file)
 DEFAULT_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
-TEMPLATE_NAME = "triage_report.md.j2"
+TEMPLATE_FULL = "triage_report.md.j2"
+TEMPLATE_COMPACT = "triage_report_compact.md.j2"
 
 
 class ReportService:
@@ -51,7 +52,7 @@ class ReportService:
                 f"Template directory not found: {self.template_path}"
             )
 
-        template_file = self.template_path / TEMPLATE_NAME
+        template_file = self.template_path / TEMPLATE_FULL
         if not template_file.exists():
             raise FileNotFoundError(f"Template file not found: {template_file}")
 
@@ -61,12 +62,14 @@ class ReportService:
         self,
         r: TriageReport,
         ai_overlay: Optional[AIOverlay] = None,
+        format: Literal["full", "compact"] = "full",
     ) -> str:
         """Generate Markdown triage report from TriageReport model.
 
         Args:
             r: The complete TriageReport model containing all 13 sections.
             ai_overlay: Optional AI overlay with LLM-generated summaries/explanations.
+            format: "full" (default) or "compact" (analyst view with collapsed details).
 
         Returns:
             Rendered Markdown report string.
@@ -84,5 +87,6 @@ class ReportService:
             - r.exec: ExecutiveSummary
             - ai_overlay: AIOverlay (optional, LLM insights)
         """
-        template = self.env.get_template(TEMPLATE_NAME)
+        template_name = TEMPLATE_COMPACT if format == "compact" else TEMPLATE_FULL
+        template = self.env.get_template(template_name)
         return template.render(r=r, ai_overlay=ai_overlay)

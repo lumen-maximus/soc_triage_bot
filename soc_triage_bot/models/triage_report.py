@@ -562,6 +562,15 @@ class Recommendation(BaseModel):
     rationale: str = Field(default="", description="Why this action is recommended")
 
 
+class TuningRecommendation(BaseModel):
+    """Tuning recommendation for false positive cases."""
+    
+    action: str = Field(..., description="Detection change to make")
+    priority: str = Field(default="P3", description="Priority level")
+    owner: str = Field(default="Detection Eng", description="Team responsible")
+    ticket: Optional[str] = Field(default=None, description="Ticket reference")
+
+
 # =============================================================================
 # SIGNAL CONTEXT (r.ctx)
 # =============================================================================
@@ -804,6 +813,18 @@ class ReportMeta(BaseModel):
     )
     triage_owner: str = Field(default="Automated", description="Triage owner/analyst")
     tool_version: str = Field(default="1.0.0", description="SOC Triage Bot version")
+    status: Optional[str] = Field(
+        default=None,
+        description="Case status: OPEN, CLOSED, IN_PROGRESS"
+    )
+    closed_utc: Optional[str] = Field(
+        default=None,
+        description="Closure timestamp for resolved cases"
+    )
+    playbook_ref: Optional[str] = Field(
+        default=None,
+        description="Playbook ID used for triage (e.g., RB-MAL-003)"
+    )
 
 
 # =============================================================================
@@ -887,6 +908,18 @@ class TriageReport(BaseModel):
     # Executive summary (optional)
     exec: Optional[ExecutiveSummary] = Field(
         default=None, description="Executive/stakeholder summary"
+    )
+    
+    # Tuning recommendations (for FP cases)
+    tuning: Optional[List[TuningRecommendation]] = Field(
+        default=None,
+        description="Tuning recommendations for FP cases"
+    )
+    
+    # Lessons learned
+    lessons_learned: Optional[List[str]] = Field(
+        default=None,
+        description="Lessons learned for case closure"
     )
 
     class Config:

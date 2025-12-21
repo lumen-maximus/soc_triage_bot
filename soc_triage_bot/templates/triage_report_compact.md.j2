@@ -1,0 +1,250 @@
+{# ============================================================================
+SOC TRIAGE REPORT - COMPACT VIEW (Analyst-First Format)
+
+PURPOSE: Fast triage view for SOC analysts with full audit trail in collapsed section
+DESIGN: ~200 lines visible content, scannable in 30 seconds, action-oriented
+============================================================================ #}
+
+{# ============================================================================
+VERDICT BANNER (Color-coded, immediate visual signal)
+============================================================================ #}
+{% set is_tp = "TRUE" in r.classification.disposition.upper() and "POSITIVE" in r.classification.disposition.upper() %}
+{% set is_fp = "FALSE" in r.classification.disposition.upper() and "POSITIVE" in r.classification.disposition.upper() %}
+{% set banner_emoji = "🔴" if is_tp else ("🟢" if is_fp else "🟡") %}
+{% set banner_text = "TRUE POSITIVE" if is_tp else ("FALSE POSITIVE" if is_fp else "NEEDS REVIEW") %}
+
+# {{ banner_emoji }} {{ banner_text }}
+
+**Severity:** {{ r.classification.severity.upper() }} | **Confidence:** {{ (r.classification.tp_likelihood * 100) | round(0) }}% | **Type:** {{ r.classification.incident_type or "N/A" }}
+
+---
+
+## 📋 Case Metadata
+
+| Field | Value |
+|-------|-------|
+| **Case ID** | {{ r.signal.id }} |
+| **Status** | {{ r.meta.status or "OPEN" }} |
+| **Analyst** | {{ r.meta.triage_owner }} |
+| **Opened** | {{ r.signal.timestamp_utc }} |
+{% if r.meta.closed_utc -%}
+| **Closed** | {{ r.meta.closed_utc }} |
+{% endif -%}
+{% if r.meta.playbook_ref -%}
+| **Playbook** | {{ r.meta.playbook_ref }} |
+{% endif -%}
+
+---
+
+## 🎯 What Happened
+
+{{ r.classification.triage_judgment or "Signal detected: " + r.signal.name }}
+
+---
+
+## 👤 Who/Where
+
+| Asset | User | Segment | Criticality |
+|-------|------|---------|-------------|
+| {{ r.ctx.hostname or r.ctx.src_ip or "N/A" }} | {{ r.ctx.username or "N/A" }} | {{ r.enrich.asset_context.host.segment if r.enrich.asset_context and r.enrich.asset_context.host else "N/A" }} | {{ r.enrich.asset_context.host.criticality if r.enrich.asset_context and r.enrich.asset_context.host else "N/A" }} |
+
+---
+
+## ⏰ When
+
+```
+Signal Time:    {{ r.signal.timestamp_utc }}
+Report Time:    {{ r.meta.generated_utc }}
+{% if r.enrich.related_events and r.enrich.related_events|length > 0 -%}
+First Event:    {{ r.enrich.related_events[0].timestamp_utc }} - {{ r.enrich.related_events[0].summary }}
+{% if r.enrich.related_events|length > 1 -%}
+Latest Event:   {{ r.enrich.related_events[-1].timestamp_utc }} - {{ r.enrich.related_events[-1].summary }}
+{% endif -%}
+{% endif -%}
+```
+
+---
+
+## ✅ Actions Required
+
+{% if is_tp -%}
+{% if r.recommendations and r.recommendations|length > 0 -%}
+| Priority | Action | Owner | Status |
+|----------|--------|-------|--------|
+{% for rec in r.recommendations[:5] -%}
+| P{{ rec.priority }} | {{ rec.description }} | {{ rec.owner_team }} | ☐ {{ rec.status }} |
+{% endfor -%}
+{% else -%}
+| Priority | Action | Owner | Status |
+|----------|--------|-------|--------|
+| P1 | Isolate affected host(s) | SOC | ☐ Open |
+| P2 | Reset user credentials | IT | ☐ Open |
+| P3 | Block malicious IOCs | Security Eng | ☐ Open |
+{% endif -%}
+{% else -%}
+**NO ACTION REQUIRED** - False Positive or Benign Event
+{% endif -%}
+
+---
+
+## 🔍 IOCs (Copy-Paste Ready)
+
+```
+{% if r.ctx.indicators and r.ctx.indicators|length > 0 -%}
+{% for ioc_type, ioc_value in r.ctx.indicators.items() -%}
+{{ ioc_type }}: {{ ioc_value }}
+{% endfor -%}
+{% else -%}
+{% if r.ctx.src_ip -%}
+src_ip: {{ r.ctx.src_ip }}
+{% endif -%}
+{% if r.ctx.dst_ip -%}
+dst_ip: {{ r.ctx.dst_ip }}
+{% endif -%}
+{% if r.ctx.hostname -%}
+hostname: {{ r.ctx.hostname }}
+{% endif -%}
+{% if not r.ctx.src_ip and not r.ctx.dst_ip and not r.ctx.hostname -%}
+No IOCs extracted
+{% endif -%}
+{% endif -%}
+```
+
+---
+
+## 📊 Evidence Summary
+
+{% if r.enrich.threat_intel and r.enrich.threat_intel|length > 0 -%}
+| ID | Source | Finding |
+|----|--------|---------|
+{% for ioc, ti in r.enrich.threat_intel.items() -%}
+| {{ loop.index }} | {{ ti.source or "TI" }} | {{ ioc }}: {{ ti.reputation }} ({{ ti.confidence }}) |
+{% endfor -%}
+{% else -%}
+| ID | Source | Finding |
+|----|--------|---------|
+| 1 | Signal | {{ r.signal.name }} ({{ r.signal.source }}) |
+{% if r.classification.reasons_tp and r.classification.reasons_tp|length > 0 -%}
+| 2 | Analysis | {{ r.classification.reasons_tp[0] }} |
+{% endif -%}
+{% endif -%}
+
+---
+
+## 🧠 Why {{ banner_text }}
+
+{% if is_tp and r.classification.reasons_tp -%}
+{% for reason in r.classification.reasons_tp[:5] -%}
+- ✓ {{ reason }}
+{% endfor -%}
+{% elif is_fp and r.classification.reasons_fp -%}
+{% for reason in r.classification.reasons_fp[:5] -%}
+- ✗ {{ reason }}
+{% endfor -%}
+{% else -%}
+- Analysis pending or inconclusive
+{% endif -%}
+
+{% if ai_overlay and ai_overlay.tp_fp_rationale -%}
+
+**🤖 AI Assessment:** {{ ai_overlay.tp_fp_rationale }}
+{% endif -%}
+
+---
+
+## 💼 Business Impact
+
+{{ r.exec.potential_impact if r.exec and r.exec.potential_impact else "Impact assessment pending" }}
+
+{% if r.exec and r.exec.business_process -%}
+**Affected Process:** {{ r.exec.business_process }}
+{% endif -%}
+
+---
+
+## 📞 Escalation Log
+
+{% if r.similar_cases and r.similar_cases|length > 0 and r.similar_cases[0].notes_summary -%}
+| Time | Action | Notes |
+|------|--------|-------|
+| {{ r.meta.generated_utc }} | Initial Triage | Automated analysis completed |
+{% else -%}
+| Time | Action | Notes |
+|------|--------|-------|
+| {{ r.meta.generated_utc }} | Initial Triage | Automated analysis completed |
+{% endif -%}
+
+---
+
+## 🎯 MITRE ATT&CK
+
+{% if r.classification.mitre and (r.classification.mitre.tactics or r.classification.mitre.techniques) -%}
+**Tactics:** {{ r.classification.mitre.tactics | join(", ") if r.classification.mitre.tactics else "N/A" }}
+
+**Techniques:** {{ r.classification.mitre.techniques | join(", ") if r.classification.mitre.techniques else "N/A" }}
+{% else -%}
+No MITRE mapping available
+{% endif -%}
+
+---
+
+{% if is_fp and r.tuning and r.tuning|length > 0 -%}
+## 🔧 Tuning Recommendation
+
+| Action | Priority | Owner | Ticket |
+|--------|----------|-------|--------|
+{% for tune in r.tuning -%}
+| {{ tune.action }} | {{ tune.priority }} | {{ tune.owner }} | {{ tune.ticket or "TBD" }} |
+{% endfor -%}
+
+---
+
+{% endif -%}
+## 📜 Compliance
+
+{% if r.exec and r.exec.compliance_notes -%}
+{{ r.exec.compliance_notes }}
+{% else -%}
+Incident documented for audit trail. No specific compliance implications identified.
+{% endif -%}
+
+---
+
+## ✓ Closure Criteria
+
+{% if is_tp -%}
+- [ ] All IOCs blocked/quarantined
+- [ ] Affected systems isolated/remediated
+- [ ] User credentials reset (if applicable)
+- [ ] Threat hunt completed for similar activity
+- [ ] Incident ticket created and assigned
+- [ ] Stakeholders notified
+{% else -%}
+- [ ] Root cause identified and documented
+- [ ] Detection tuning ticket created
+- [ ] False positive rate tracked
+- [ ] Runbook updated with findings
+{% endif -%}
+
+---
+
+{% if is_fp and r.lessons_learned and r.lessons_learned|length > 0 -%}
+## 💡 Lessons Learned
+
+{% for lesson in r.lessons_learned -%}
+- {{ lesson }}
+{% endfor -%}
+
+---
+
+{% endif -%}
+<details>
+<summary>📎 Full Audit Report (All 13 Sections, Raw Payload, AI Analysis, ETS Models)</summary>
+
+{% include 'triage_report.md.j2' %}
+
+</details>
+
+---
+
+**Report Generated:** {{ r.meta.generated_utc }} | **Tool Version:** {{ r.meta.tool_version }}
