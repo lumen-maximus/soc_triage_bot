@@ -150,6 +150,12 @@ class TriageService:
         # NOTE: SimilarCase models include runbook_refs, attachments_metadata
         # from SOAR. This is the SINGLE source - no re-fetching later.
         similar_cases_models = self.similarity_service.find_similar_as_models(signal)
+        
+        # Augment with SOAR-linked cases if available
+        similar_cases_models = self._augment_similar_cases_with_soar(
+            signal, similar_cases_models
+        )
+        
         similar_cases_tuples = [
             (c.case_id, c.similarity, c.outcome) for c in similar_cases_models
         ]
@@ -160,6 +166,11 @@ class TriageService:
             enrichments=enrichments,
             similar_cases=similar_cases_tuples,
             forecast=forecast_bundle,
+        )
+        
+        # Apply SOAR classification hints if available
+        classification_result = self._apply_soar_classification_hints(
+            signal, classification_result
         )
 
         # Step 5: Action proposals -> Recommendations
@@ -346,3 +357,80 @@ class TriageService:
             )
             for a in actions
         ]
+
+    def _augment_similar_cases_with_soar(
+        self, signal: Signal, similar_cases_models: List
+    ) -> List:
+        """Augment similar cases with SOAR-linked related cases.
+        
+        Merges SOAR-explicitly linked cases (100% similarity) with
+        TF-IDF discovered cases, avoiding duplicates.
+        
+        Args:
+            signal: Signal with potential SOAR metadata
+            similar_cases_models: List of SimilarCase models from TF-IDF
+            
+        Returns:
+            Merged list of similar cases, sorted by similarity
+        """
+        from ..models.triage_report import SimilarCase
+        
+        all_cases = []
+        
+        # Extract SOAR pre-linked cases if available
+        if signal.metadata.get("soar_related_cases"):
+            soar_case_ids = signal.metadata["soar_related_cases"]
+            for case_id in soar_case_ids:
+                # Create similar case with 100% similarity (explicitly linked)
+                similar_case = SimilarCase(
+                    case_id=case_id,
+                    similarity=1.0,  # SOAR explicitly linked = 100%
+                    outcome="unknown",  # Would be fetched in production
+                    overlap_summary="soar_linked",
+                    actions_taken=[]
+                )
+                all_cases.append(similar_case)
+        
+        # Add TF-IDF cases (avoiding duplicates)
+        soar_ids = {c.case_id for c in all_cases}
+        for case in similar_cases_models:
+            if case.case_id not in soar_ids:
+                all_cases.append(case)
+        
+        # Sort by similarity (descending)
+        all_cases.sort(key=lambda c: c.similarity, reverse=True)
+        
+        return all_cases[:10]  # Return top 10
+
+    def _apply_soar_classification_hints(
+        self, signal: Signal, classification: ClassificationResult
+    ) -> ClassificationResult:
+        """Apply SOAR analyst assessment as classification hint.
+        
+        Uses SOAR status to adjust TP likelihood with 15% weight.
+        
+        Args:
+            signal: Signal with potential SOAR metadata
+            classification: Base classification result
+            
+        Returns:
+            Classification with SOAR hints applied
+        """
+        soar_status = signal.metadata.get("soar_status", "").lower()
+        
+        if not soar_status:
+            return classification
+        
+        # Adjust based on SOAR analyst assessment
+        if any(kw in soar_status for kw in ["confirmed", "malicious", "true_positive"]):
+            classification.tp_likelihood = min(1.0, classification.tp_likelihood + 0.15)
+            if classification.reasons_tp is None:
+                classification.reasons_tp = []
+            classification.reasons_tp.append(f"SOAR analyst marked as {soar_status}")
+        elif any(kw in soar_status for kw in ["benign", "false_positive", "dismissed"]):
+            classification.tp_likelihood = max(0.0, classification.tp_likelihood - 0.15)
+            if classification.reasons_fp is None:
+                classification.reasons_fp = []
+            classification.reasons_fp.append(f"SOAR analyst marked as {soar_status}")
+        
+        return classification

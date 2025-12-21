@@ -1,0 +1,106 @@
+{
+  "id": 108,
+  "label": "incident",
+  "name": "Advanced Persistent Threat Activity",
+  "source_data_identifier": "apt-detection-2025",
+  "description": "Multiple indicators of APT activity detected across enterprise",
+  "severity": "critical",
+  "status": "confirmed",
+  "sensitivity": "red",
+  "owner": "tier3_analyst",
+  "tags": ["apt", "lateral_movement", "data_exfiltration"],
+  "create_time": "2025-12-20T15:30:00.000000Z",
+  "open_time": "2025-12-20T15:30:00.000000Z",
+  "container_update_time": "2025-12-20T18:45:00.000000Z",
+  "artifact_count": 3,
+  "related_cases": ["case-2024-1234", "case-2024-5678"],
+  "playbook_history": [
+    {
+      "id": "pb-run-001",
+      "playbook_name": "APT Response Playbook",
+      "status": "success",
+      "run_time": "2025-12-20T16:00:00.000000Z",
+      "actions": [
+        {
+          "id": "act-001",
+          "type": "isolate",
+          "title": "Isolate Affected Hosts",
+          "description": "Network isolation of compromised systems"
+        },
+        {
+          "id": "act-002",
+          "type": "investigate",
+          "title": "Collect Memory Dumps",
+          "description": "Full memory capture for forensic analysis"
+        }
+      ]
+    }
+  ],
+  "data": {
+    "artifacts": [
+      {
+        "id": 1,
+        "name": "Threat Intelligence - APT28",
+        "type": "threat_intel",
+        "create_time": "2025-12-20T15:35:00.000000Z",
+        "data": {
+          "reputation": "malicious",
+          "confidence": 0.95,
+          "malicious_score": 92,
+          "tags": ["apt28", "fancy_bear", "state_sponsored"],
+          "sources": ["crowdstrike", "fireeye", "microsoft"],
+          "categories": ["apt", "cyber_espionage"]
+        },
+        "cef": {
+          "sourceAddress": "203.0.113.88",
+          "destinationAddress": "10.10.20.50",
+          "destinationHostName": "db-server-prod",
+          "destinationDnsDomain": "corp.internal"
+        }
+      },
+      {
+        "id": 2,
+        "name": "CMDB Asset Information",
+        "type": "asset",
+        "create_time": "2025-12-20T15:40:00.000000Z",
+        "data": {
+          "owner": "Database Team",
+          "criticality": "critical",
+          "business_unit": "Finance",
+          "department": "Treasury",
+          "business_criticality": "tier1",
+          "asset_tag": "DB-PROD-001"
+        },
+        "cef": {
+          "deviceOwner": "database_admin",
+          "deviceOsName": "Ubuntu 22.04 LTS"
+        }
+      },
+      {
+        "id": 3,
+        "name": "EDR Process Telemetry",
+        "type": "edr",
+        "create_time": "2025-12-20T15:50:00.000000Z",
+        "data": {
+          "process_tree": [
+            {"name": "svchost.exe", "pid": 1234},
+            {"name": "powershell.exe", "pid": 5678, "parent_pid": 1234}
+          ],
+          "network_connections": [
+            {"remote_ip": "203.0.113.88", "remote_port": 443}
+          ],
+          "file_modifications": [
+            "/var/log/auth.log"
+          ],
+          "containment_status": "isolated"
+        },
+        "cef": {
+          "deviceProcessName": "powershell.exe",
+          "parentProcessName": "svchost.exe",
+          "fileHashSha256": "def456abc789012345678901234567890123456789012345678901234567890",
+          "suser": "db_service_account"
+        }
+      }
+    ]
+  }
+}

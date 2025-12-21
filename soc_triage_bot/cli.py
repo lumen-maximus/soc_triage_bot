@@ -933,8 +933,198 @@ def _select_entity_focus(signal: Signal, entities: Dict[str, Any]) -> str:
     return "hostname"  # Default fallback
 
 
+def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
+    """Auto-detect if JSON is a SOAR container and parse it.
+    
+    Detects SOAR containers by checking for distinctive fields:
+    - source_data_identifier (unique to SOAR)
+    - container_update_time (unique to SOAR)
+    - artifact_count (unique to SOAR)
+    - Container label field with SOAR-style labels
+    
+    If 2+ of these fields are present, treat as SOAR container.
+    
+    Args:
+        data: JSON dictionary to check
+        
+    Returns:
+        Signal if SOAR container detected, None otherwise
+    """
+    # Check for SOAR-specific fields
+    soar_indicators = 0
+    
+    if "source_data_identifier" in data:
+        soar_indicators += 1
+    if "container_update_time" in data:
+        soar_indicators += 1
+    if "artifact_count" in data:
+        soar_indicators += 1
+    if "label" in data:
+        soar_indicators += 1
+    
+    # Need at least 2 indicators to be confident it's a SOAR container
+    if soar_indicators < 2:
+        return None
+    
+    # Log detection
+    show_info(f"{c('Detected SOAR container', Colors.GREEN + Colors.BOLD)} - auto-parsing")
+    
+    # Extract container fields
+    container_id = data.get("id")
+    container_name = data.get("name", "Untitled SOAR Container")
+    container_description = data.get("description", "")
+    container_severity = data.get("severity", "medium").lower()
+    container_tags = data.get("tags", [])
+    container_label = data.get("label", "incident")
+    
+    # Map SOAR label to signal_type
+    label_to_signal_type = {
+        "incident": SignalType.SIEM_ALERT,
+        "intelligence": SignalType.IOC,
+        "vulnerabilities": SignalType.CVE,
+        "email": SignalType.USER_REPORT,
+    }
+    signal_type = label_to_signal_type.get(container_label, SignalType.SIEM_ALERT)
+    
+    # Parse timestamp
+    timestamp_str = data.get("create_time")
+    if timestamp_str:
+        # Handle ISO8601 timestamps with 'Z' suffix more robustly
+        timestamp = datetime.fromisoformat(timestamp_str.rstrip("Z") + "+00:00")
+    else:
+        timestamp = datetime.utcnow()
+    
+    # Build source
+    source = SignalSource(
+        system="soar",
+        rule_id=data.get("source_data_identifier"),
+        rule_name=container_name,
+    )
+    
+    # Extract entities from artifacts
+    entities = {}
+    artifacts_data = []
+    
+    # Check for artifacts in data.artifacts or data.data.artifacts
+    artifacts = data.get("artifacts", [])
+    if not artifacts and "data" in data:
+        artifacts = data.get("data", {}).get("artifacts", [])
+    
+    # Process artifacts and extract CEF fields
+    if artifacts:
+        show_info(f"Processing {c(str(len(artifacts)), Colors.CYAN)} artifacts from SOAR container")
+        
+        for artifact in artifacts:
+            artifact_info = {
+                "id": artifact.get("id"),
+                "name": artifact.get("name"),
+                "cef": artifact.get("cef", {}),
+            }
+            artifacts_data.append(artifact_info)
+            
+            # Extract CEF fields to entities using a mapping dictionary
+            cef = artifact.get("cef", {})
+            
+            # CEF field to entity type mapping
+            cef_field_mapping = {
+                # Network entities
+                "sourceAddress": "ip",
+                "destinationAddress": "ip",
+                "destinationHostName": "hostname",
+                "sourceHostName": "hostname",
+                "destinationDnsDomain": "domain",
+                "sourceDnsDomain": "domain",
+                "requestURL": "url",
+                # User entities
+                "suser": "user",
+                "duser": "user",
+                # File/Hash entities
+                "fileHashSha256": "hash",
+                "fileHashSha1": "hash",
+                "fileHashMd5": "hash",
+                "filePath": "file",
+                "fileName": "file",
+                # Process entities
+                "deviceProcessName": "process",
+                "sourceProcessName": "process",
+                # Email entities
+                "senderAddress": "email",
+                "recipientAddress": "email",
+            }
+            
+            # Extract entities based on mapping
+            for cef_field, entity_type in cef_field_mapping.items():
+                value = cef.get(cef_field)
+                if value is not None and value != "":
+                    entities.setdefault(entity_type, []).append(value)
+    
+    # Deduplicate entities
+    for entity_type in entities:
+        entities[entity_type] = list(set(entities[entity_type]))
+    
+    # Log extracted entities
+    if entities:
+        entity_summary = ", ".join([f"{len(v)} {k}" for k, v in entities.items()])
+        show_info(f"Extracted entities: {c(entity_summary, Colors.CYAN)}")
+    
+    # Build metadata with all SOAR-specific fields
+    metadata = {
+        "soar_id": container_id,
+        "soar_label": container_label,
+        "soar_status": data.get("status"),
+        "soar_sensitivity": data.get("sensitivity"),
+        "soar_owner": data.get("owner"),
+        "soar_hash": data.get("hash"),
+        "soar_asset_name": data.get("asset_name"),
+        "soar_open_time": data.get("open_time"),
+        "soar_close_time": data.get("close_time"),
+        "soar_due_time": data.get("due_time"),
+        "soar_kill_chain": data.get("kill_chain"),
+        "artifact_count": data.get("artifact_count"),
+        "source_data_identifier": data.get("source_data_identifier"),
+        "soar_related_cases": data.get("related_cases", []),
+        "soar_playbook_history": data.get("playbook_history", []),
+    }
+    
+    # Store artifacts in metadata
+    if artifacts_data:
+        metadata["artifacts"] = artifacts_data
+    
+    # Note if artifacts are missing but expected
+    artifact_count = data.get("artifact_count", 0)
+    if artifact_count > 0 and not artifacts:
+        metadata["artifacts_note"] = f"Container indicates {artifact_count} artifacts but none included in JSON"
+    
+    # Build signal
+    signal = Signal(
+        signal_id=f"soar-{container_id}" if container_id else f"soar-{uuid.uuid4().hex[:8]}",
+        signal_type=signal_type,
+        timestamp=timestamp,
+        source=source,
+        title=container_name,
+        description=container_description,
+        severity=container_severity,
+        entities=entities,
+        tags=container_tags,
+        raw_data=data,  # Preserve full SOAR container data
+        metadata=metadata,
+    )
+    
+    return signal
+
+
 def parse_signal_from_json(data: dict) -> Signal:
-    """Parse a signal from JSON data."""
+    """Parse a signal from JSON data.
+    
+    Attempts to detect and parse SOAR containers first, then falls back
+    to standard signal format.
+    """
+    # Try SOAR container detection first
+    soar_signal = detect_and_parse_soar_container(data)
+    if soar_signal:
+        return soar_signal
+    
+    # Fall back to existing signal parsing logic
     signal_type = SignalType(data.get("signal_type", "siem_alert"))
 
     # Parse timestamp
