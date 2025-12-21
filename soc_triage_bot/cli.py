@@ -989,7 +989,8 @@ def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
     # Parse timestamp
     timestamp_str = data.get("create_time")
     if timestamp_str:
-        timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        # Handle ISO8601 timestamps with 'Z' suffix more robustly
+        timestamp = datetime.fromisoformat(timestamp_str.rstrip("Z") + "+00:00")
     else:
         timestamp = datetime.utcnow()
     
@@ -1053,8 +1054,9 @@ def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
             
             # Extract entities based on mapping
             for cef_field, entity_type in cef_field_mapping.items():
-                if cef_field in cef and cef[cef_field]:
-                    entities.setdefault(entity_type, []).append(cef[cef_field])
+                value = cef.get(cef_field)
+                if value is not None and value != "":
+                    entities.setdefault(entity_type, []).append(value)
     
     # Deduplicate entities
     for entity_type in entities:
