@@ -539,24 +539,3 @@ def test_similarity_service_with_soar_artifacts(sample_signal):
         assert case.case_id == "case-soar-001"
         assert len(case.runbook_refs) > 0
         assert case.runbook_refs[0].ref_id == "RB-001"
-            "title": "Similar Alert with SOAR",
-            "description": "Case with runbook references",
-            "signal_type": "siem_alert",
-            "tags": ["malware"],
-            "entities": {"ip": ["192.0.2.100"]},
-            "outcome": "TP",
-            "actions_taken": ["Followed RB-001"],
-            "runbook_refs": [
-                {"ref_id": "RB-001", "ref_type": "runbook", "source": "soar", "title": "Malware Response"}
-            ]
-        }
-    ]
-
-    service = SimilarityService(case_database=case_db)
-    similar_cases = service.find_similar_as_models(sample_signal, top_k=1)
-
-    if len(similar_cases) > 0:
-        case = similar_cases[0]
-        assert case.case_id == "case-soar-001"
-        assert len(case.runbook_refs) > 0
-        assert case.runbook_refs[0].ref_id == "RB-001"
