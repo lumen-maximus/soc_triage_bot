@@ -1082,6 +1082,8 @@ def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
         "soar_kill_chain": data.get("kill_chain"),
         "artifact_count": data.get("artifact_count"),
         "source_data_identifier": data.get("source_data_identifier"),
+        "soar_related_cases": data.get("related_cases", []),
+        "soar_playbook_history": data.get("playbook_history", []),
     }
     
     # Store artifacts in metadata

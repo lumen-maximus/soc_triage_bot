@@ -15,15 +15,22 @@ class CMDBAdapter(BaseAdapter):
         This is a generic implementation. In production, this would
         connect to CMDB systems (ServiceNow, etc.)
         
+        For SOAR signals, augments fresh queries with baseline data.
+        
         Args:
             signal: The signal to enrich
             
         Returns:
-            EnrichmentResult with CMDB/asset context
+            EnrichmentResult with CMDB/asset context (merged with SOAR baseline)
         """
         start_time = datetime.utcnow()
         
         try:
+            # Extract SOAR baseline if available
+            from ..services.soar_extractor import SOARDataExtractor
+            soar_baseline = SOARDataExtractor.extract_baseline_enrichments(signal)
+            soar_cmdb = soar_baseline.get("cmdb", {})
+            
             # Mock enrichment - in production, query CMDB for:
             # - Asset details
             # - Business criticality
@@ -76,6 +83,18 @@ class CMDBAdapter(BaseAdapter):
                         "public_facing": True
                     }
                     enrichment_data["assets_found"] += 1
+            
+            # Augment with SOAR context if available
+            if soar_cmdb:
+                enrichment_data["soar_context"] = {
+                    "had_previous_asset_data": True,
+                    "previous_owner": soar_cmdb.get("soar_owner"),
+                    "previous_criticality": soar_cmdb.get("soar_criticality"),
+                    "soar_business_unit": soar_cmdb.get("soar_business_unit"),
+                    "soar_department": soar_cmdb.get("soar_department"),
+                    "soar_os": soar_cmdb.get("soar_os"),
+                    "soar_last_updated": soar_cmdb.get("soar_last_updated")
+                }
             
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
             
