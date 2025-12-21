@@ -18,6 +18,8 @@ import click
 from .adapters import (
     CMDBAdapter,
     EDRAdapter,
+    HistoricalQueryCapable,
+    MockHistoricalAdapter,
     SIEMAdapter,
     ThreatIntelAdapter,
     VulnerabilityAdapter,
@@ -30,7 +32,12 @@ from .models.signal import (
     EntityBehaviorContext,
     VulnerabilityContext,
 )
-from .services import AIService, EnrichmentService, TriageService
+from .services import (
+    AIService,
+    EnrichmentService,
+    HistoricalDataService,
+    TriageService,
+)
 from .services.forecasting import MultiTrackHistoricalData
 
 # =============================================================================
@@ -184,11 +191,12 @@ def show_divider():
 # =============================================================================
 
 
-def setup_triage_service(ai_enabled: bool = False):
+def setup_triage_service(ai_enabled: bool = False, demo_mode: bool = False):
     """Initialize the triage service.
 
     Args:
         ai_enabled: Whether to enable AI overlay generation.
+        demo_mode: Whether to run in demo mode with mock historical data.
     """
     adapters = [
         SIEMAdapter(),
@@ -206,7 +214,32 @@ def setup_triage_service(ai_enabled: bool = False):
         settings = get_settings()
         ai_service = AIService.from_settings(settings)
 
-    return TriageService(enrichment_service=enrichment_service, ai_service=ai_service)
+    # Create historical data service based on mode
+    historical_data_service = None
+    if demo_mode:
+        # Demo mode: always use mock adapter
+        historical_data_service = HistoricalDataService([MockHistoricalAdapter()])
+    else:
+        # Live mode: get adapters that support historical queries
+        capable_adapters = []
+        for adapter in adapters:
+            # Check if adapter implements HistoricalQueryCapable protocol
+            if hasattr(adapter, 'supports_historical_query') and callable(getattr(adapter, 'supports_historical_query')):
+                try:
+                    if adapter.supports_historical_query():
+                        capable_adapters.append(adapter)
+                except Exception:
+                    pass
+        
+        # Create service if we have capable adapters
+        if capable_adapters:
+            historical_data_service = HistoricalDataService(capable_adapters)
+
+    return TriageService(
+        enrichment_service=enrichment_service,
+        ai_service=ai_service,
+        historical_data_service=historical_data_service
+    )
 
 
 @click.group(invoke_without_command=True)
@@ -415,7 +448,7 @@ def triage(
         show_step(6, "Generating AI overlay...", "running")
 
     result = asyncio.run(
-        execute_triage(signal, hist_data, forecast_enabled, ai_enabled=ai_service)
+        execute_triage(signal, hist_data, forecast_enabled, ai_enabled=ai_service, demo_mode=demo)
     )
 
     # Show completion
@@ -488,7 +521,7 @@ def create(
     show_section("Running Triage")
 
     # Execute triage (with forecast enabled by default)
-    result = asyncio.run(execute_triage(signal, None, forecast_enabled=True))
+    result = asyncio.run(execute_triage(signal, None, forecast_enabled=True, demo_mode=False))
 
     # Output report
     show_section("Output")
@@ -588,6 +621,7 @@ async def execute_triage(
     historical_data: Optional[MultiTrackHistoricalData] = None,
     forecast_enabled: bool = True,
     ai_enabled: bool = False,
+    demo_mode: bool = False,
 ):
     """Execute triage asynchronously using the extended multi-track triage.
 
@@ -596,8 +630,9 @@ async def execute_triage(
         historical_data: Optional multi-track historical data for forecasting
         forecast_enabled: Whether to run ETS forecasting
         ai_enabled: Whether to enable AI overlay generation
+        demo_mode: Whether to run in demo mode with mock historical data
     """
-    triage_service = setup_triage_service(ai_enabled=ai_enabled)
+    triage_service = setup_triage_service(ai_enabled=ai_enabled, demo_mode=demo_mode)
 
     result = await triage_service.triage_extended(
         signal, historical_data, forecast_enabled=forecast_enabled

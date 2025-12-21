@@ -11,8 +11,14 @@ from .ai_provider import (
     get_provider,
 )
 from .base import BaseAdapter
+from .base_historical import (
+    HistoricalQueryCapable,
+    TimeSeriesPoint,
+    TimeSeriesResult,
+)
 from .cmdb import CMDBAdapter
 from .edr import EDRAdapter
+from .mock_historical import MockHistoricalAdapter
 from .siem import SIEMAdapter
 from .threat_intel import ThreatIntelAdapter
 from .vulnerability import VulnerabilityAdapter
@@ -33,4 +39,9 @@ __all__ = [
     "AnthropicProvider",
     "OllamaProvider",
     "get_provider",
+    # Historical query support
+    "HistoricalQueryCapable",
+    "TimeSeriesPoint",
+    "TimeSeriesResult",
+    "MockHistoricalAdapter",
 ]

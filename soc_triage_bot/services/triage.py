@@ -90,6 +90,7 @@ class TriageService:
         action_proposal_service: Optional[ActionProposalService] = None,
         report_service: Optional[ReportService] = None,
         ai_service: Optional["AIService"] = None,
+        historical_data_service: Optional["HistoricalDataService"] = None,
     ):
         """Initialize triage service.
 
@@ -101,6 +102,7 @@ class TriageService:
             action_proposal_service: Service for action proposals (optional)
             report_service: Service for report generation (optional)
             ai_service: Service for AI overlay generation (optional)
+            historical_data_service: Service for historical data fetching (optional)
         """
         self.enrichment_service = enrichment_service
         self.forecasting_service = forecasting_service or ForecastingService()
@@ -111,6 +113,7 @@ class TriageService:
         )
         self.report_service = report_service or ReportService()
         self.ai_service = ai_service  # None = no AI overlay
+        self.historical_data_service = historical_data_service  # None = no auto-fetch
 
     async def triage_extended(
         self,
@@ -138,6 +141,13 @@ class TriageService:
         # Generate evidence IDs for enrichments
         for idx, (adapter_name, result) in enumerate(enrichments.items()):
             result.generate_evidence_id(idx + 1)
+
+        # Auto-fetch historical data if needed
+        if forecast_enabled and historical_data is None and self.historical_data_service:
+            try:
+                historical_data = await self.historical_data_service.fetch_for_signal(signal)
+            except Exception:
+                pass  # Graceful - forecasting will be skipped
 
         # Step 2: Multi-track ETS forecasting (if enabled)
         forecast_bundle = ForecastBundle(enabled=False)

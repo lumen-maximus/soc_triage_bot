@@ -5,6 +5,7 @@ from .ai import AIService
 from .classification import ClassificationService
 from .enrichment import EnrichmentService
 from .forecasting import ForecastingService
+from .historical_data import HistoricalDataService
 from .report import ReportService
 from .similarity import SimilarityService
 from .triage import TriageService
@@ -18,4 +19,5 @@ __all__ = [
     "TriageService",
     "ForecastingService",
     "SimilarityService",
+    "HistoricalDataService",
 ]
