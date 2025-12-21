@@ -31,7 +31,10 @@ Appendix: Raw payload
 """
 
 import asyncio
+import io
 import json
+import sys
+from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -80,6 +83,43 @@ from soc_triage_bot.models.triage_report import (
 )
 from soc_triage_bot.services import AIService
 from soc_triage_bot.services.report import ReportService
+
+
+# =============================================================================
+# TEE OUTPUT UTILITY (for capturing console output to file)
+# =============================================================================
+
+
+class TeeIO:
+    """Write to both a buffer and the original stream for console logging."""
+
+    def __init__(self, original_stream, buffer):
+        self.original = original_stream
+        self.buffer = buffer
+
+    def write(self, data):
+        try:
+            self.original.write(data)
+        except Exception:
+            pass  # Continue even if original stream fails
+        try:
+            self.buffer.write(data)
+        except Exception:
+            pass  # Continue even if buffer write fails
+
+    def flush(self):
+        try:
+            self.original.flush()
+        except Exception:
+            pass
+        try:
+            self.buffer.flush()
+        except Exception:
+            pass
+
+    def isatty(self):
+        return self.original.isatty() if hasattr(self.original, "isatty") else False
+
 
 # =============================================================================
 # BANNER & UI UTILITIES
@@ -1447,7 +1487,7 @@ async def run_demo():
     await asyncio.sleep(0.2)
 
     report_service = ReportService()
-    report = report_service.generate_report(triage_report, ai_overlay)
+    report = report_service.generate_report(triage_report, ai_overlay, format="compact")
 
     print(f"{c('│', Colors.DIM)}   Rendered: Header + Decision Banner")
     print(f"{c('│', Colors.DIM)}   Rendered: §1-§13 (all sections)")
@@ -1618,4 +1658,24 @@ async def run_demo():
 
 
 if __name__ == "__main__":
-    asyncio.run(run_demo())
+    # Capture console output (stdout and stderr) to buffer while also displaying to terminal
+    console_buffer = io.StringIO()
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    sys.stdout = TeeIO(original_stdout, console_buffer)
+    sys.stderr = TeeIO(original_stderr, console_buffer)
+
+    try:
+        asyncio.run(run_demo())
+    finally:
+        # Restore original stdout and stderr
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+
+        # Save console log to output directory
+        output_dir = Path(__file__).parent / "soc_triage_bot" / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        console_log_path = output_dir / "console.log"
+        with open(console_log_path, "w", encoding="utf-8") as f:
+            f.write(console_buffer.getvalue())
+        print(f"✓ Console log saved to: {console_log_path}")
