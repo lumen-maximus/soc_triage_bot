@@ -1,0 +1,45 @@
+flowchart TD
+  A0["Signal received"] --> A1{"Signal type"}
+
+  A1 -->|"SIEM alert"| I1["Ingest from SIEM (adapter)"]
+  A1 -->|"SOAR container/case"| I2["Hydrate from SOAR (service)"]
+  A1 -->|"IOC or intel"| I3["Ingest IOC (adapter)"]
+  A1 -->|"EDR detection"| I4["Ingest from EDR (adapter)"]
+  A1 -->|"Vuln finding"| I5["Ingest vuln finding (adapter)"]
+  A1 -->|"Other"| I6["Normalize minimal fields"]
+
+  I1 --> P1
+  I2 --> P1
+  I3 --> P1
+  I4 --> P1
+  I5 --> P1
+  I6 --> P1
+
+  P1["Phase 1: Bootstrap case graph and deterministic case ID"] --> P15["Phase 1.5: Canonicalize entities and dedupe"]
+  P15 --> P2["Phase 2: Hydrate missing payloads only if needed"]
+
+  P2 --> Q1{"Detection evidence present"}
+
+  Q1 -->|"Yes"| P3["Phase 3: Enrich once via adapters (delta optimized)"]
+  Q1 -->|"No"| P3b["Phase 3: Enrich IOC only and note evidence gaps"]
+
+  P3 --> P4
+  P3b --> P4
+
+  P4["Phase 4: Fetch historical time series (multi-track)"] --> P5["Phase 5: ETS forecasting and trend context"]
+  P5 --> P6["Phase 6: Link case context (similar cases and correlation)"]
+  P6 --> P7["Phase 7: Classify disposition (TP, FP, REVIEW)"]
+  P7 --> D1{"Disposition"}
+
+  D1 --> P8["Phase 8: Match runbooks and playbooks"]
+  P8 --> P9["Phase 9: Generate ranked action proposals"]
+  P9 --> P10["Phase 10: Governance gate (auto_execute, approval, blocked)"]
+
+  P10 --> Q2{"Auto-close eligible"}
+
+  Q2 -->|"Yes"| AC["Auto-close or auto-resolve (per governance)"] --> P11
+  Q2 -->|"No"| P11["Continue without auto-close"]
+
+  P11 --> P11a["Phase 11: AI overlay optional (summarize bounded to evidence)"]
+  P11a --> P12["Phase 12: Render triage packet"]
+  P12 --> OUT["Output: Triage packet (TP or FP or REVIEW)"]

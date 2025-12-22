@@ -1,0 +1,31 @@
+flowchart TD
+  S0["Signal received"] --> D0["Run deterministic pipeline (phases 1 to 12)"]
+  D0 --> PKT["Triage packet produced (decision, evidence, actions)"]
+  D0 --> G0["Governance gate output (auto_execute, approval, blocked)"]
+
+  G0 --> X1{"Any auto_execute actions"}
+
+  X1 -->|"Yes"| AG1["Agent orchestrator executes approved actions"]
+  X1 -->|"No"| X2{"Any actions requiring approval"}
+
+  X2 -->|"Yes"| AP1["Request human approval"]
+  X2 -->|"No"| OUT2["Deliver packet only (no execution)"]
+
+  AP1 -->|"Approved"| AG1
+  AP1 -->|"Denied"| OUT2
+
+  G0 --> BLK["Blocked actions are documented only (no execution)"]
+  BLK --> OUT2
+
+  AG1 --> T1["Execute via tool adapters (SIEM, SOAR, EDR, TI, CMDB, Vuln)"]
+  T1 --> W1["Write back results to case notes and artifacts"]
+  W1 --> R1["Re-render packet with execution results"]
+  R1 --> OUT1["Outcome (closed, contained, escalated)"]
+
+  OUT1 --> FB["Capture outcome and time saved"]
+  OUT2 --> FB
+  FB --> MEM["Store as case memory (similar cases, runbooks, outcomes)"]
+  MEM --> D0
+
+  G0 --> SH["Optional shadow mode (recommend only, no execution)"]
+  SH --> FB
