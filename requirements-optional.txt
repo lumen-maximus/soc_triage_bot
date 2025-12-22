@@ -1,0 +1,15 @@
+# SOC Triage Bot - Optional AI Provider Dependencies
+# Install specific providers as needed:
+#   pip install -r requirements-optional.txt          # All AI providers
+#   pip install openai>=1.0.0                         # OpenAI only
+#   pip install anthropic>=0.18.0                     # Anthropic only
+#   pip install httpx>=0.25.0                         # Ollama only
+
+# OpenAI (GPT-4, GPT-4o, GPT-4o-mini)
+openai>=1.0.0
+
+# Anthropic (Claude 3.5, Claude 3 Opus/Sonnet/Haiku)
+anthropic>=0.18.0
+
+# Ollama (Local models via HTTP API)
+httpx>=0.25.0

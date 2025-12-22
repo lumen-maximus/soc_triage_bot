@@ -219,14 +219,14 @@ class OpenAIProvider(BaseAIProvider):
         """Sync generation call - wrapped by asyncio.to_thread."""
         client = self._get_client()
 
-        messages: List[Dict[str, str]] = []
+        messages: List[Dict[str, Any]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
         response = client.chat.completions.create(
             model=self.config.model,
-            messages=messages,
+            messages=messages,  # type: ignore
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
         )

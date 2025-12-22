@@ -79,7 +79,6 @@ __all__ = [
     "ExtractedEntity",
     "ExtractedIndicator",
     # Classification
-    "Classification",
     "ClassificationLabel",
     # Action
     "Action",

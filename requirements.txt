@@ -32,8 +32,8 @@ python-dateutil>=2.8.0
 pyyaml>=6.0
 
 # =============================================================================
-# Optional: AI Providers (uncomment as needed)
+# Optional: AI Providers
 # =============================================================================
-# openai>=1.0.0          # For OpenAI GPT-4/GPT-4o
-# anthropic>=0.18.0      # For Anthropic Claude
-# httpx>=0.25.0          # For Ollama (local models)
+# See requirements-optional.txt for AI provider dependencies
+# Install with: pip install -r requirements-optional.txt
+# Or install providers individually as needed

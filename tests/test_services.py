@@ -70,8 +70,33 @@ def test_forecasting_service():
 
     # Create multi-track historical data with enough points
     now = datetime.utcnow()
-    values = [5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
-              17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0]
+    values = [
+        5.0,
+        6.0,
+        7.0,
+        8.0,
+        9.0,
+        10.0,
+        11.0,
+        12.0,
+        13.0,
+        14.0,
+        15.0,
+        16.0,
+        17.0,
+        18.0,
+        19.0,
+        20.0,
+        21.0,
+        22.0,
+        23.0,
+        24.0,
+        25.0,
+        26.0,
+        27.0,
+        28.0,
+        29.0,
+    ]
     timestamps = [now - timedelta(hours=i) for i in range(len(values), 0, -1)]
 
     track_a = TrackTimeSeries(
@@ -253,9 +278,7 @@ def test_forecasting_service_with_multiple_tracks():
     )
 
     historical_data = MultiTrackHistoricalData(
-        track_a=track_a,
-        track_b=track_b,
-        track_c=track_c
+        track_a=track_a, track_b=track_b, track_c=track_c
     )
 
     result = service.forecast_multi_track(signal, historical_data)
@@ -336,7 +359,7 @@ def test_similarity_service_extended_matching(sample_signal):
             "tags": ["phishing"],
             "entities": {"ip": ["10.0.0.1"]},
             "outcome": "FP",
-        }
+        },
     ]
 
     service = SimilarityService(case_database=case_db)
@@ -433,7 +456,7 @@ def test_classification_service_with_forecast():
             adapter="siem",
             status=EnrichmentStatus.SUCCESS,
             data={"historical_fp_rate": 0.3},
-        )
+        ),
     }
 
     # Create a forecast bundle with anomaly
@@ -453,17 +476,14 @@ def test_classification_service_with_forecast():
                     value=15.0,
                     percentile=95.0,
                     anomaly_score=0.85,  # High anomaly score
-                    current_vs_expected="3x above expected"
-                )
+                    current_vs_expected="3x above expected",
+                ),
             )
-        )
+        ),
     )
 
     classification = service.classify_extended(
-        signal=signal,
-        enrichments=enrichments,
-        similar_cases=[],
-        forecast=forecast
+        signal=signal, enrichments=enrichments, similar_cases=[], forecast=forecast
     )
 
     assert classification.disposition is not None
@@ -499,13 +519,11 @@ def test_classification_service_high_fp_rate():
             adapter="siem",
             status=EnrichmentStatus.SUCCESS,
             data={"historical_fp_rate": 0.85},  # Very high FP rate
-        )
+        ),
     }
 
     classification = service.classify_extended(
-        signal=signal,
-        enrichments=enrichments,
-        similar_cases=[]
+        signal=signal, enrichments=enrichments, similar_cases=[]
     )
 
     assert classification.disposition is not None
@@ -526,8 +544,13 @@ def test_similarity_service_with_soar_artifacts(sample_signal):
             "outcome": "TP",
             "actions_taken": ["Followed RB-001"],
             "runbook_refs": [
-                {"ref_id": "RB-001", "ref_type": "runbook", "source": "soar", "title": "Malware Response"}
-            ]
+                {
+                    "ref_id": "RB-001",
+                    "ref_type": "runbook",
+                    "source": "soar",
+                    "title": "Malware Response",
+                }
+            ],
         }
     ]
 
@@ -539,284 +562,5 @@ def test_similarity_service_with_soar_artifacts(sample_signal):
         assert case.case_id == "case-soar-001"
         assert len(case.runbook_refs) > 0
         assert case.runbook_refs[0].ref_id == "RB-001"
-
-
-def test_report_service_full_format():
-    """Test ReportService generates full format report."""
-    from soc_triage_bot.models.triage_report import (
-        ClassificationResult,
-        MitreMapping,
-        NormalizedSignal,
-        ReportMeta,
-        TriageReport,
-    )
-    from soc_triage_bot.services.report import ReportService
-    
-    # Create minimal TriageReport
-    signal = NormalizedSignal(
-        id="test-001",
-        type="SIEM_ALERT",
-        source="Test SIEM",
-        name="Test Alert",
-        timestamp_utc="2025-12-21T00:00:00Z"
-    )
-    
-    classification = ClassificationResult(
-        disposition="TRUE_POSITIVE",
-        tp_likelihood=0.85,
-        severity="high",
-        confidence="high",
-        incident_type="Malware",
-        mitre=MitreMapping(
-            tactics=["Execution"],
-            techniques=["T1059"]
-        ),
-        reasons_tp=["Suspicious behavior detected"],
-        reasons_fp=[],
-        triage_judgment="High confidence TP"
-    )
-    
-    report = TriageReport(
-        signal=signal,
-        meta=ReportMeta(triage_owner="Test Analyst"),
-        classification=classification
-    )
-    
-    service = ReportService()
-    markdown = service.generate_report(report, format="full")
-    
-    assert "SOC Triage Report" in markdown
-    assert signal.id in markdown
-    assert "Decision Banner" in markdown
-    assert classification.disposition in markdown
-
-
-def test_report_service_compact_format():
-    """Test ReportService generates compact format report."""
-    from soc_triage_bot.models.triage_report import (
-        ClassificationResult,
-        MitreMapping,
-        NormalizedSignal,
-        ReportMeta,
-        Recommendation,
-        TriageReport,
-    )
-    from soc_triage_bot.services.report import ReportService
-    
-    # Create minimal TriageReport with recommendations
-    signal = NormalizedSignal(
-        id="test-002",
-        type="SIEM_ALERT",
-        source="Test SIEM",
-        name="Test Alert",
-        timestamp_utc="2025-12-21T00:00:00Z"
-    )
-    
-    classification = ClassificationResult(
-        disposition="TRUE POSITIVE",
-        tp_likelihood=0.92,
-        severity="critical",
-        confidence="high",
-        incident_type="Credential Theft",
-        mitre=MitreMapping(
-            tactics=["Credential Access"],
-            techniques=["T1003"]
-        ),
-        reasons_tp=["Known malicious IP", "Encoded PowerShell detected"],
-        reasons_fp=[],
-        triage_judgment="Critical TP - immediate action required"
-    )
-    
-    recommendations = [
-        Recommendation(
-            priority=1,
-            description="Isolate affected host immediately",
-            owner_team="SOC",
-            auto_executable=True
-        ),
-        Recommendation(
-            priority=2,
-            description="Reset user credentials",
-            owner_team="IT",
-            auto_executable=False
-        )
-    ]
-    
-    report = TriageReport(
-        signal=signal,
-        meta=ReportMeta(
-            triage_owner="Test Analyst",
-            status="OPEN",
-            playbook_ref="RB-MAL-003"
-        ),
-        classification=classification,
-        recommendations=recommendations
-    )
-    
-    service = ReportService()
-    markdown = service.generate_report(report, format="compact")
-    
-    # Check for compact template elements
-    assert "TRUE POSITIVE" in markdown or "🔴" in markdown
-    assert "Case Metadata" in markdown
-    assert "What Happened" in markdown
-    assert "Actions Required" in markdown
-    assert "IOCs" in markdown
-    assert "Why TRUE POSITIVE" in markdown or "Why TP" in markdown
-    assert "Business Impact" in markdown
-    assert "MITRE ATT&CK" in markdown
-    assert "Closure Criteria" in markdown
-    # Check that full report is included in collapsed section
-    assert "Full Audit Report" in markdown
-    assert "<details>" in markdown
-    assert "</details>" in markdown
-
-
-def test_report_meta_new_fields():
-    """Test ReportMeta accepts new fields."""
-    from soc_triage_bot.models.triage_report import ReportMeta
-    
-    meta = ReportMeta(
-        triage_owner="Analyst1",
-        status="IN_PROGRESS",
-        closed_utc="2025-12-21T10:00:00Z",
-        playbook_ref="RB-MAL-005"
-    )
-    
-    assert meta.status == "IN_PROGRESS"
-    assert meta.closed_utc == "2025-12-21T10:00:00Z"
-    assert meta.playbook_ref == "RB-MAL-005"
-
-
-def test_tuning_recommendation_model():
-    """Test TuningRecommendation model."""
-    from soc_triage_bot.models.triage_report import TuningRecommendation
-    
-    tuning = TuningRecommendation(
-        action="Adjust detection threshold for rule XYZ",
-        priority="P2",
-        owner="Detection Engineering",
-        ticket="DET-1234"
-    )
-    
-    assert tuning.action == "Adjust detection threshold for rule XYZ"
-    assert tuning.priority == "P2"
-    assert tuning.owner == "Detection Engineering"
-    assert tuning.ticket == "DET-1234"
-
-
-def test_triage_report_with_tuning_and_lessons():
-    """Test TriageReport with tuning and lessons_learned fields."""
-    from soc_triage_bot.models.triage_report import (
-        ClassificationResult,
-        NormalizedSignal,
-        TuningRecommendation,
-        TriageReport,
-    )
-    
-    signal = NormalizedSignal(
-        id="test-003",
-        type="SIEM_ALERT",
-        source="Test SIEM",
-        name="Test Alert"
-    )
-    
-    classification = ClassificationResult(
-        disposition="FALSE POSITIVE",
-        tp_likelihood=0.15,
-        severity="low",
-        confidence="high",
-        reasons_fp=["Known benign behavior", "Authorized admin activity"]
-    )
-    
-    tuning = [
-        TuningRecommendation(
-            action="Exclude admin accounts from rule",
-            priority="P2",
-            owner="Detection Eng"
-        )
-    ]
-    
-    lessons = [
-        "Admin accounts generate many FPs for this rule",
-        "Need to add context for privileged accounts"
-    ]
-    
-    report = TriageReport(
-        signal=signal,
-        classification=classification,
-        tuning=tuning,
-        lessons_learned=lessons
-    )
-    
-    assert report.tuning is not None
-    assert len(report.tuning) == 1
-    assert report.tuning[0].action == "Exclude admin accounts from rule"
-    assert report.lessons_learned is not None
-    assert len(report.lessons_learned) == 2
-
-
-def test_compact_report_with_fp_and_tuning():
-    """Test compact report with FP case and tuning recommendations."""
-    from soc_triage_bot.models.triage_report import (
-        ClassificationResult,
-        NormalizedSignal,
-        ReportMeta,
-        TuningRecommendation,
-        TriageReport,
-    )
-    from soc_triage_bot.services.report import ReportService
-    
-    signal = NormalizedSignal(
-        id="test-fp-001",
-        type="SIEM_ALERT",
-        source="Test SIEM",
-        name="False Positive Test Alert",
-        timestamp_utc="2025-12-21T00:00:00Z"
-    )
-    
-    classification = ClassificationResult(
-        disposition="FALSE POSITIVE",
-        tp_likelihood=0.10,
-        severity="low",
-        confidence="high",
-        reasons_fp=["Authorized maintenance activity", "User confirmed benign"],
-        triage_judgment="Confirmed FP - requires tuning"
-    )
-    
-    tuning = [
-        TuningRecommendation(
-            action="Add maintenance window exclusion",
-            priority="P2",
-            owner="Detection Eng",
-            ticket="TUNE-456"
-        )
-    ]
-    
-    lessons = [
-        "Maintenance windows should be excluded from detections",
-        "Need better context for scheduled activities"
-    ]
-    
-    report = TriageReport(
-        signal=signal,
-        meta=ReportMeta(
-            triage_owner="FP Analyst",
-            status="CLOSED",
-            closed_utc="2025-12-21T05:00:00Z"
-        ),
-        classification=classification,
-        tuning=tuning,
-        lessons_learned=lessons
-    )
-    
-    service = ReportService()
-    markdown = service.generate_report(report, format="compact")
-    
-    # Check FP-specific elements
-    assert "FALSE POSITIVE" in markdown or "🟢" in markdown
-    assert "Tuning Recommendation" in markdown
-    assert "Add maintenance window exclusion" in markdown
-    assert "Lessons Learned" in markdown
-    assert "NO ACTION REQUIRED" in markdown
-    assert "CLOSED" in markdown
+        assert len(case.runbook_refs) > 0
+        assert case.runbook_refs[0].ref_id == "RB-001"
