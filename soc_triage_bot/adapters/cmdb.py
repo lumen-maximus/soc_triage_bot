@@ -2,45 +2,45 @@
 
 from datetime import datetime
 from typing import Any, Dict
+
+from ..models import EnrichmentResult, EnrichmentStatus, Signal
 from .base import BaseAdapter
-from ..models import Signal, EnrichmentResult, EnrichmentStatus
 
 
 class CMDBAdapter(BaseAdapter):
     """Configuration Management Database adapter."""
-    
+
     async def enrich(self, signal: Signal) -> EnrichmentResult:
         """Enrich signal with CMDB/asset data.
-        
+
         This is a generic implementation. In production, this would
         connect to CMDB systems (ServiceNow, etc.)
-        
+
         For SOAR signals, augments fresh queries with baseline data.
-        
+
         Args:
             signal: The signal to enrich
-            
+
         Returns:
             EnrichmentResult with CMDB/asset context (merged with SOAR baseline)
         """
         start_time = datetime.utcnow()
-        
+
         try:
             # Extract SOAR baseline if available
-            from ..services.soar_extractor import SOARDataExtractor
-            soar_baseline = SOARDataExtractor.extract_baseline_enrichments(signal)
-            soar_cmdb = soar_baseline.get("cmdb", {})
-            
+            from ..services.case_artifact_harvester import CaseArtifactHarvester
+            soar_cmdb = CaseArtifactHarvester.extract_baseline_enrichments(signal).get("cmdb", {})
+
             # Mock enrichment - in production, query CMDB for:
             # - Asset details
             # - Business criticality
             # - Owner information
             # - Compliance requirements
-            
+
             enrichment_data: Dict[str, Any] = {
                 "assets_found": 0
             }
-            
+
             # Check hostnames
             if "hostname" in signal.entities:
                 enrichment_data["host_assets"] = {}
@@ -56,7 +56,7 @@ class CMDBAdapter(BaseAdapter):
                         "cost_center": "ENG-001"
                     }
                     enrichment_data["assets_found"] += 1
-            
+
             # Check users
             if "user" in signal.entities:
                 enrichment_data["user_assets"] = {}
@@ -70,7 +70,7 @@ class CMDBAdapter(BaseAdapter):
                         "clearance_level": "standard"
                     }
                     enrichment_data["assets_found"] += 1
-            
+
             # Check applications
             if "application" in signal.entities:
                 enrichment_data["app_assets"] = {}
@@ -83,7 +83,7 @@ class CMDBAdapter(BaseAdapter):
                         "public_facing": True
                     }
                     enrichment_data["assets_found"] += 1
-            
+
             # Augment with SOAR context if available
             if soar_cmdb:
                 enrichment_data["soar_context"] = {
@@ -95,16 +95,16 @@ class CMDBAdapter(BaseAdapter):
                     "soar_os": soar_cmdb.get("soar_os"),
                     "soar_last_updated": soar_cmdb.get("soar_last_updated")
                 }
-            
+
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
-            
+
             return EnrichmentResult(
                 adapter=self.name,
                 status=EnrichmentStatus.SUCCESS,
                 data=enrichment_data,
                 duration_ms=duration_ms
             )
-            
+
         except Exception as e:
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
             return EnrichmentResult(
@@ -112,4 +112,6 @@ class CMDBAdapter(BaseAdapter):
                 status=EnrichmentStatus.FAILED,
                 error=str(e),
                 duration_ms=duration_ms
+            )
+            )
             )

@@ -3,7 +3,13 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..models import EnrichmentResult, EnrichmentStatus, Signal
+from ..models import (
+    EnrichmentResult,
+    EnrichmentStatus,
+    Signal,
+    SignalSource,
+    SignalType,
+)
 from .base import BaseAdapter, BucketedSeriesResult
 
 
@@ -28,6 +34,13 @@ class SIEMAdapter(BaseAdapter):
         start_time = datetime.utcnow()
 
         try:
+            # Extract SOAR baseline if available
+            from ..services.case_artifact_harvester import CaseArtifactHarvester
+
+            soar_siem = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
+                "siem", {}
+            )
+
             # Mock enrichment - in production, query SIEM for:
             # - Historical alerts for same entities
             # - Related events in time window
@@ -50,6 +63,10 @@ class SIEMAdapter(BaseAdapter):
                     }
 
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+            # Merge SOAR baseline with fresh data
+            if soar_siem:
+                enrichment_data["soar_baseline"] = soar_siem
 
             return EnrichmentResult(
                 adapter=self.name,
@@ -644,3 +661,130 @@ steps:
             },
         }
         return mock_cases.get(case_id) or {}
+
+    async def fetch_alert_by_id(self, alert_id: str) -> Optional[Signal]:
+        """Fetch a SIEM alert/notable event by ID and convert to Signal.
+
+        In production, this would:
+        1. Query SIEM API for alert by ID
+        2. Fetch associated raw events, context
+        3. Parse into Signal format
+
+        Args:
+            alert_id: SIEM alert/notable event ID
+
+        Returns:
+            Signal object if found, None otherwise
+        """
+        import uuid
+
+        from ..models.signal import (
+            ArtifactContext,
+            DetectionContext,
+            EntityBehaviorContext,
+        )
+
+        # Mock implementation - returns sample SIEM alert
+        # In production, replace with actual SIEM API call:
+        # response = requests.get(f"{self.api_url}/services/saved/searches/alert/{alert_id}",
+        #                         headers={"Authorization": f"Bearer {self.api_token}"})
+
+        mock_alert = self._generate_mock_alert(alert_id)
+
+        # Parse into Signal
+        signal = Signal(
+            signal_id=f"siem-{alert_id}",
+            signal_type=SignalType.SIEM_ALERT,
+            timestamp=mock_alert["timestamp"],
+            source=SignalSource(
+                system="siem",
+                rule_id=mock_alert["rule_id"],
+                rule_name=mock_alert["rule_name"],
+            ),
+            title=mock_alert["title"],
+            description=mock_alert["description"],
+            severity=mock_alert["severity"],
+            entities=mock_alert["entities"],
+            tags=mock_alert["tags"],
+            raw_data=mock_alert["raw_data"],
+            detection_context=DetectionContext(
+                rule_id=mock_alert["rule_id"],
+                detection_name=mock_alert["rule_name"],
+                mitre_tactics=mock_alert.get("mitre_tactics", []),
+                mitre_techniques=mock_alert.get("mitre_techniques", []),
+            ),
+            entity_context=EntityBehaviorContext(
+                hostname=mock_alert["entities"].get("hostname", [""])[0]
+                if "hostname" in mock_alert["entities"]
+                else None,
+                username=mock_alert["entities"].get("user", [""])[0]
+                if "user" in mock_alert["entities"]
+                else None,
+                src_ip=mock_alert["entities"].get("ip", [""])[0]
+                if "ip" in mock_alert["entities"]
+                else None,
+            ),
+            artifact_context=ArtifactContext(
+                domain=mock_alert.get("indicators", {}).get("domain"),
+                ip=mock_alert.get("indicators", {}).get("ip"),
+                process_name=mock_alert["raw_data"].get("process_name"),
+            ),
+        )
+
+        return signal
+
+    def _generate_mock_alert(self, alert_id: str) -> Dict[str, Any]:
+        """Generate mock SIEM alert for testing.
+
+        In production, this data comes from SIEM API.
+
+        Args:
+            alert_id: Alert ID to generate data for
+
+        Returns:
+            Mock alert dictionary
+        """
+        return {
+            "alert_id": alert_id,
+            "rule_id": f"rule-{alert_id[:8]}",
+            "rule_name": "Suspicious Process Execution",
+            "timestamp": datetime.utcnow(),
+            "title": f"Suspicious Activity Detected - Alert {alert_id}",
+            "description": f"SIEM alert {alert_id}: Suspicious process execution detected on endpoint",
+            "severity": "high",
+            "entities": {
+                "hostname": [f"workstation-{alert_id[:4]}"],
+                "user": ["analyst-user"],
+                "ip": ["192.0.2.100"],
+                "process": ["powershell.exe"],
+            },
+            "indicators": {
+                "domain": "suspicious-domain.com",
+                "ip": "198.51.100.50",
+            },
+            "tags": ["malware", "process-execution", "edr"],
+            "mitre_tactics": ["execution", "defense_evasion"],
+            "mitre_techniques": ["T1059.001", "T1140"],
+            "raw_data": {
+                "process_name": "powershell.exe",
+                "command_line": "powershell -enc BASE64_ENCODED_COMMAND",
+                "parent_process": "explorer.exe",
+                "event_count": 15,
+                "first_seen": datetime.utcnow().isoformat(),
+                "last_seen": datetime.utcnow().isoformat(),
+            },
+        }
+                "command_line": "powershell -enc BASE64_ENCODED_COMMAND",
+                "parent_process": "explorer.exe",
+                "event_count": 15,
+                "first_seen": datetime.utcnow().isoformat(),
+                "last_seen": datetime.utcnow().isoformat(),
+            },
+        }
+                "command_line": "powershell -enc BASE64_ENCODED_COMMAND",
+                "parent_process": "explorer.exe",
+                "event_count": 15,
+                "first_seen": datetime.utcnow().isoformat(),
+                "last_seen": datetime.utcnow().isoformat(),
+            },
+        }

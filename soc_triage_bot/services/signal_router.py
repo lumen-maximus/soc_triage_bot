@@ -398,5 +398,3 @@ class SignalRouter:
                 return entity_type
 
         return "hostname"  # Default fallback
-        return "hostname"  # Default fallback
-        return "hostname"  # Default fallback

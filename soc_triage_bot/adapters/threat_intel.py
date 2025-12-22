@@ -20,7 +20,7 @@ class ThreatIntelAdapter(BaseAdapter):
 
         This is a generic implementation. In production, this would
         connect to TI feeds (VirusTotal, AlienVault, etc.)
-        
+
         For SOAR signals, augments fresh queries with baseline data.
 
         Args:
@@ -33,10 +33,12 @@ class ThreatIntelAdapter(BaseAdapter):
 
         try:
             # Extract SOAR baseline if available
-            from ..services.soar_extractor import SOARDataExtractor
-            soar_baseline = SOARDataExtractor.extract_baseline_enrichments(signal)
-            soar_ti = soar_baseline.get("threatintel", {})
-            
+            from ..services.case_artifact_harvester import CaseArtifactHarvester
+
+            soar_ti = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
+                "threatintel", {}
+            )
+
             # Mock enrichment - in production, query TI sources for:
             # - IP/domain/hash reputation
             # - Known campaigns
@@ -94,24 +96,26 @@ class ThreatIntelAdapter(BaseAdapter):
                     "previous_reputation": soar_ti.get("soar_reputation"),
                     "first_analyzed": soar_ti.get("soar_first_seen"),
                     "reputation_changed": (
-                        soar_ti.get("soar_reputation") != enrichment_data.get("reputation")
-                        if soar_ti.get("soar_reputation") else False
+                        soar_ti.get("soar_reputation")
+                        != enrichment_data.get("reputation")
+                        if soar_ti.get("soar_reputation")
+                        else False
                     ),
                 }
-                
+
                 # Merge tags (deduplicated)
                 soar_tags = soar_ti.get("soar_tags", [])
                 if soar_tags:
-                    enrichment_data["tags"] = list(set(
-                        enrichment_data.get("tags", []) + soar_tags
-                    ))
-                
+                    enrichment_data["tags"] = list(
+                        set(enrichment_data.get("tags", []) + soar_tags)
+                    )
+
                 # Merge sources (deduplicated)
                 soar_sources = soar_ti.get("soar_sources", [])
                 if soar_sources:
-                    enrichment_data["sources"] = list(set(
-                        enrichment_data.get("sources", []) + soar_sources
-                    ))
+                    enrichment_data["sources"] = list(
+                        set(enrichment_data.get("sources", []) + soar_sources)
+                    )
 
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
 

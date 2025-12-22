@@ -33,6 +33,8 @@ from .fetch_planner import FetchPlanner
 from .forecasting import ForecastingService, MultiTrackHistoricalData
 from .governance_gate import GovernanceGate
 from .report import ReportService
+from .runbook_registry import RunbookRegistry
+from .source_hydrator import SourceHydrator
 
 if TYPE_CHECKING:
     from .ai import AIService
@@ -110,9 +112,11 @@ class TriageService:
         historical_data_service: Optional[Any] = None,
         # CKG services
         case_bootstrap_service: Optional[CaseBootstrapService] = None,
+        source_hydrator: Optional[SourceHydrator] = None,
         fetch_planner: Optional[FetchPlanner] = None,
         detection_resolver: Optional[DetectionResolver] = None,
         governance_gate: Optional[GovernanceGate] = None,
+        runbook_registry: Optional[RunbookRegistry] = None,
         case_context_linking: Optional[CaseContextLinkingService] = None,
         enable_ckg: bool = True,
     ):
@@ -127,9 +131,11 @@ class TriageService:
             ai_service: Service for AI overlay generation (optional)
             historical_data_service: Service for historical data fetching (optional)
             case_bootstrap_service: CKG bootstrap service (optional)
+            source_hydrator: Source payload hydrator (optional)
             fetch_planner: CKG fetch planner for delta-only enrichment (optional)
             detection_resolver: CKG detection resolver (optional)
             governance_gate: CKG governance gate for action filtering (optional)
+            runbook_registry: Runbook/playbook registry for governed templates (optional)
             case_context_linking: CKG case linking service (optional)
             enable_ckg: Enable CKG integration (default True)
         """
@@ -146,9 +152,11 @@ class TriageService:
         # CKG services
         self.enable_ckg = enable_ckg
         self.case_bootstrap_service = case_bootstrap_service or CaseBootstrapService()
+        self.source_hydrator = source_hydrator or SourceHydrator()
         self.fetch_planner = fetch_planner or FetchPlanner()
         self.detection_resolver = detection_resolver or DetectionResolver()
         self.governance_gate = governance_gate or GovernanceGate()
+        self.runbook_registry = runbook_registry or RunbookRegistry()
         self.case_context_linking = case_context_linking or CaseContextLinkingService()
 
     async def triage_extended(
@@ -179,6 +187,20 @@ class TriageService:
         graph = None
         if self.enable_ckg:
             graph = self.case_bootstrap_service.bootstrap(signal, mode=triage_mode)
+
+        # =====================================================================
+        # PHASE 1.5: Source Hydration (if signal is just an ID pointer)
+        # =====================================================================
+        signal, hydration_meta = await self.source_hydrator.hydrate_if_needed(signal)
+        # If hydrated, optionally add observation node to graph
+        if (
+            self.enable_ckg
+            and graph
+            and hydration_meta
+            and hydration_meta.get("hydrated")
+        ):
+            # Could add source hydration observation to graph here
+            pass
 
         # =====================================================================
         # CKG PHASE 2: Fetch Planning (determine what to enrich)
@@ -269,6 +291,12 @@ class TriageService:
         classification_result = self._apply_soar_classification_hints(
             signal, classification_result
         )
+
+        # Step 4.5: Runbook Matching (select governed templates)
+        applicable_runbooks = self.runbook_registry.find_applicable_runbooks(
+            signal, classification_result
+        )
+        # Pass runbooks to action proposal service (stored for later use)
 
         # Step 5: Action proposals -> Recommendations (with CKG graph writing)
         if self.enable_ckg and graph:

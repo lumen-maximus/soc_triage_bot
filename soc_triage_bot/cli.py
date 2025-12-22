@@ -293,7 +293,21 @@ def serve(host: str, port: int, reload: bool):
 
 
 @main.command()
-@click.option("--signal-file", type=click.Path(exists=True), help="Signal JSON file")
+@click.option(
+    "--signal-file",
+    type=click.Path(exists=True),
+    help="Signal JSON file (auto-detects SOAR container or standard signal)",
+)
+@click.option(
+    "--soar-container", type=click.Path(exists=True), help="SOAR container JSON file"
+)
+@click.option(
+    "--soar-id", type=str, help="SOAR case ID to fetch (requires SOAR adapter)"
+)
+@click.option("--siem-alert", type=click.Path(exists=True), help="SIEM alert JSON file")
+@click.option(
+    "--siem-alert-id", type=str, help="SIEM alert ID to fetch (requires SIEM adapter)"
+)
 @click.option(
     "--ioc", type=str, help="IOC string (format: type=value, e.g., domain=evil.com)"
 )
@@ -327,6 +341,10 @@ def serve(host: str, port: int, reload: bool):
 )
 def triage(
     signal_file: Optional[str],
+    soar_container: Optional[str],
+    soar_id: Optional[str],
+    siem_alert: Optional[str],
+    siem_alert_id: Optional[str],
     ioc: Optional[str],
     cve: Optional[str],
     hunt_id: Optional[str],
@@ -341,7 +359,11 @@ def triage(
     """Triage a security signal from various input sources.
 
     Input can be one of:
-    - --signal-file: Full signal JSON file
+    - --signal-file: Signal JSON file (auto-detects SOAR container or standard signal)
+    - --soar-container: SOAR container JSON file (Phantom/Splunk SOAR format)
+    - --soar-id: SOAR case ID to fetch from SOAR platform
+    - --siem-alert: SIEM alert JSON file
+    - --siem-alert-id: SIEM alert ID to fetch from SIEM
     - --ioc: IOC string (type=value format)
     - --cve: CVE identifier
     - --hunt-id: Hunt finding ID
@@ -350,6 +372,10 @@ def triage(
 
     Examples:
         soc-agent triage --signal-file alert.json
+        soc-agent triage --soar-container phantom_case.json
+        soc-agent triage --soar-id 12345
+        soc-agent triage --siem-alert splunk_notable.json
+        soc-agent triage --siem-alert-id "alert-abc-123"
         soc-agent triage --ioc "domain=evil.com"
         soc-agent triage --cve CVE-2024-12345
         soc-agent triage --hunt-id HUNT-007
@@ -363,6 +389,7 @@ def triage(
     signal = None
     hist_data = None
     input_source = ""
+    signal_router = SignalRouter()
 
     show_section("Input Processing")
 
@@ -371,13 +398,66 @@ def triage(
         signal = create_demo_signal()
         input_source = "demo"
         show_info(f"Demo mode: Generated sample {c('SIEM_ALERT', Colors.CYAN)}")
+    elif soar_container:
+        # Load SOAR container JSON
+        with open(soar_container) as f:
+            soar_data = json.load(f)
+        signal = signal_router.detect_and_parse_soar_container(soar_data)
+        if not signal:
+            show_error("File does not appear to be a valid SOAR container")
+            raise click.UsageError(f"Invalid SOAR container format in {soar_container}")
+        input_source = f"SOAR container: {Path(soar_container).name}"
+        show_info(
+            f"Loaded SOAR container from {c(Path(soar_container).name, Colors.CYAN)}"
+        )
+        show_info(
+            f"Container ID: {c(signal.metadata.get('soar_id', 'unknown'), Colors.WHITE)}"
+        )
+    elif soar_id:
+        # Fetch SOAR case by ID (uses SOARAdapter)
+        show_info(f"Fetching SOAR case from platform...")
+        signal = create_signal_from_soar_id(soar_id)
+        input_source = f"SOAR ID: {soar_id}"
+        if signal.tags and "fetch-failed" in signal.tags:
+            show_warning(
+                "SOAR fetch returned mock data (adapter configuration needed for live data)"
+            )
+        else:
+            show_info(f"Fetched SOAR case: {c(soar_id, Colors.GREEN)}")
+    elif siem_alert:
+        # Load SIEM alert JSON
+        with open(siem_alert) as f:
+            alert_data = json.load(f)
+        signal = parse_signal_from_json(alert_data)
+        input_source = f"SIEM alert: {Path(siem_alert).name}"
+        show_info(f"Loaded SIEM alert from {c(Path(siem_alert).name, Colors.CYAN)}")
+    elif siem_alert_id:
+        # Fetch SIEM alert by ID (uses SIEMAdapter)
+        show_info(f"Fetching SIEM alert from platform...")
+        signal = create_signal_from_siem_alert_id(siem_alert_id)
+        input_source = f"SIEM alert ID: {siem_alert_id}"
+        if signal.tags and "fetch-failed" in signal.tags:
+            show_warning(
+                "SIEM fetch returned mock data (adapter configuration needed for live data)"
+            )
+        else:
+            show_info(f"Fetched SIEM alert: {c(siem_alert_id, Colors.GREEN)}")
     elif signal_file:
-        # Load from JSON file
+        # Load from JSON file (auto-detects SOAR container or standard signal)
         with open(signal_file) as f:
             signal_data = json.load(f)
-        signal = parse_signal_from_json(signal_data)
-        input_source = f"file: {Path(signal_file).name}"
-        show_info(f"Loaded signal from {c(Path(signal_file).name, Colors.CYAN)}")
+        # Try SOAR container detection first
+        signal = signal_router.detect_and_parse_soar_container(signal_data)
+        if signal:
+            input_source = f"SOAR container (auto-detected): {Path(signal_file).name}"
+            show_info(
+                f"Auto-detected SOAR container from {c(Path(signal_file).name, Colors.CYAN)}"
+            )
+        else:
+            # Fall back to standard signal parsing
+            signal = parse_signal_from_json(signal_data)
+            input_source = f"file: {Path(signal_file).name}"
+            show_info(f"Loaded signal from {c(Path(signal_file).name, Colors.CYAN)}")
     elif ioc:
         # Create IOC signal from string
         signal = create_signal_from_ioc(ioc)
@@ -403,7 +483,7 @@ def triage(
     else:
         show_error("No input specified!")
         raise click.UsageError(
-            "Must specify one of: --signal-file, --ioc, --cve, --hunt-id, --user-report, or --demo"
+            "Must specify one of: --signal-file, --soar-container, --soar-id, --siem-alert, --siem-alert-id, --ioc, --cve, --hunt-id, --user-report, or --demo"
         )
 
     # Load historical data if provided
@@ -749,6 +829,82 @@ def create_signal_from_ioc(ioc_string: str) -> Signal:
         tags=["ioc", ioc_type],
         raw_data={"ioc_type": ioc_type, "ioc_value": ioc_value},
     )
+
+
+def create_signal_from_soar_id(soar_id: str) -> Signal:
+    """Fetch a signal from SOAR case ID using SOARAdapter.
+
+    Args:
+        soar_id: SOAR case/container ID
+
+    Returns:
+        Signal with full SOAR case data
+    """
+    from .adapters.soar import SOARAdapter  # type: ignore
+
+    # Create adapter and fetch case
+    soar_adapter = SOARAdapter()
+    signal = asyncio.run(soar_adapter.fetch_case_by_id(soar_id))
+
+    if not signal:
+        # Fallback: create minimal signal if fetch fails
+        signal = Signal(
+            signal_id=f"soar-{soar_id}",
+            signal_type=SignalType.SIEM_ALERT,
+            timestamp=datetime.utcnow(),
+            source=SignalSource(
+                system="soar",
+                rule_name=f"SOAR Case {soar_id}",
+                rule_id=soar_id,
+            ),
+            title=f"SOAR Case {soar_id}",
+            description=f"Signal created from SOAR case ID: {soar_id}. Case fetch failed.",
+            severity="medium",
+            entities={},
+            tags=["soar", "fetch-failed"],
+            raw_data={"soar_id": soar_id},
+            metadata={"soar_id": soar_id, "fetch_status": "failed"},
+        )
+
+    return signal
+
+
+def create_signal_from_siem_alert_id(alert_id: str) -> Signal:
+    """Fetch a signal from SIEM alert ID using SIEMAdapter.
+
+      Args:
+          alert_id: SIEM alert/notable event ID
+    # type: ignore
+      Returns:
+          Signal with full SIEM alert data
+    """
+    from .adapters.siem import SIEMAdapter
+
+    # Create adapter and fetch alert
+    siem_adapter = SIEMAdapter()
+    signal = asyncio.run(siem_adapter.fetch_alert_by_id(alert_id))
+
+    if not signal:
+        # Fallback: create minimal signal if fetch fails
+        signal = Signal(
+            signal_id=f"siem-{alert_id}",
+            signal_type=SignalType.SIEM_ALERT,
+            timestamp=datetime.utcnow(),
+            source=SignalSource(
+                system="siem",
+                rule_name=f"Alert {alert_id}",
+                rule_id=alert_id,
+            ),
+            title=f"SIEM Alert {alert_id}",
+            description=f"Signal created from SIEM alert ID: {alert_id}. Alert fetch failed.",
+            severity="medium",
+            entities={},
+            tags=["siem", "fetch-failed"],
+            raw_data={"alert_id": alert_id},
+            metadata={"alert_id": alert_id, "fetch_status": "failed"},
+        )
+
+    return signal
 
 
 def create_signal_from_cve(cve_id: str) -> Signal:
