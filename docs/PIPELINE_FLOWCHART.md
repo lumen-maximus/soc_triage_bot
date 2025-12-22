@@ -1,0 +1,394 @@
+# SOC Triage Bot Pipeline Flowchart
+
+Complete signal-to-report flow based on actual codebase implementation.
+
+## Pipeline Diagram
+
+![SOC Triage Bot Pipeline](pipeline_flowchart.svg)
+
+> **Note:** The diagram above is an SVG rendering of the Mermaid flowchart defined in [pipeline.mmd](pipeline.mmd).
+> To regenerate: `npx -p @mermaid-js/mermaid-cli mmdc -i pipeline.mmd -o pipeline_flowchart.svg -t dark -b transparent`
+
+## Mermaid Source
+
+The diagram source is available in [pipeline.mmd](pipeline.mmd) for editing and re-rendering.
+
+<details>
+<summary>Click to expand Mermaid source code</summary>
+
+```mermaid
+flowchart TD
+    %% =========================================================================
+    %% SIGNAL INGESTION LAYER
+    %% =========================================================================
+    subgraph INGESTION["📥 Signal Ingestion"]
+        CLI[CLI Entry<br/>cli.py]
+        API[API Entry<br/>api.py]
+
+        CLI --> SIGNAL
+        API --> SIGNAL
+
+        SIGNAL{{Signal Object}}
+    end
+
+    %% =========================================================================
+    %% SIGNAL TYPE BRANCHING (10 Types from SignalType Enum)
+    %% =========================================================================
+    subgraph SIGNAL_TYPES["🔀 Signal Type Detection"]
+        SIGNAL --> TYPE_CHECK{SignalType?}
+
+        TYPE_CHECK -->|SIEM_ALERT| SIEM_BRANCH[SIEM Alert]
+        TYPE_CHECK -->|IOC| IOC_BRANCH[IoC Indicator]
+        TYPE_CHECK -->|CVE| CVE_BRANCH[CVE/Vuln]
+        TYPE_CHECK -->|HUNT| HUNT_BRANCH[Hunt Finding]
+        TYPE_CHECK -->|USER_REPORT| USER_BRANCH[User Report]
+        TYPE_CHECK -->|EDR_DETECTION| EDR_BRANCH[EDR Detection]
+        TYPE_CHECK -->|EMAIL_SECURITY_ALERT| EMAIL_BRANCH[Email Security]
+        TYPE_CHECK -->|TI_INDICATOR| TI_BRANCH[Threat Intel]
+        TYPE_CHECK -->|VULNERABILITY_ALERT| VULN_BRANCH[Vuln Alert]
+        TYPE_CHECK -->|HUNT_FINDING| HUNT_F_BRANCH[Hunt Finding]
+
+        %% All branches converge to subtype detection
+        SIEM_BRANCH --> SUBTYPE
+        IOC_BRANCH --> SUBTYPE
+        CVE_BRANCH --> SUBTYPE
+        HUNT_BRANCH --> SUBTYPE
+        USER_BRANCH --> SUBTYPE
+        EDR_BRANCH --> SUBTYPE
+        EMAIL_BRANCH --> SUBTYPE
+        TI_BRANCH --> SUBTYPE
+        VULN_BRANCH --> SUBTYPE
+        HUNT_F_BRANCH --> SUBTYPE
+    end
+
+    %% =========================================================================
+    %% SIGNAL SUBTYPE DETECTION (Content-Based)
+    %% =========================================================================
+    subgraph SUBTYPE_DETECTION["🔍 Subtype Detection<br/>signal_router.py"]
+        SUBTYPE{{"_determine_signal_subtype()"}}
+
+        SUBTYPE -->|Direct Map| DIRECT_MAP["CVE→vuln<br/>IOC→ioc<br/>HUNT→hunt<br/>USER_REPORT→user"]
+        SUBTYPE -->|Content Analysis| CONTENT_MAP["auth | endpoint | network<br/>email | other"]
+
+        DIRECT_MAP --> NORMALIZED_SIGNAL
+        CONTENT_MAP --> NORMALIZED_SIGNAL
+        NORMALIZED_SIGNAL{{Normalized Signal<br/>with subtype}}
+    end
+
+    %% =========================================================================
+    %% PHASE 1: CASE BOOTSTRAP (CKG)
+    %% =========================================================================
+    subgraph PHASE1["📌 Phase 1: Case Bootstrap<br/>case_bootstrap.py"]
+        NORMALIZED_SIGNAL --> BOOTSTRAP["CaseBootstrapService<br/>bootstrap()"]
+        BOOTSTRAP --> CKG_GRAPH["TriageContextGraph<br/>CaseNode + SignalNode"]
+        BOOTSTRAP --> CASE_ID["case_id assigned"]
+    end
+
+    %% =========================================================================
+    %% PHASE 1.5: ENTITY CANONICALIZATION
+    %% =========================================================================
+    subgraph PHASE1_5["🔗 Phase 1.5: Canonicalization<br/>canonicalize.py"]
+        CKG_GRAPH --> CANON["CanonicalizeService<br/>canonicalize_entities()"]
+        CANON --> ENTITY_NODES["EntityNodes<br/>user | host | ip | hash"]
+    end
+
+    %% =========================================================================
+    %% PHASE 2: SOURCE HYDRATION
+    %% =========================================================================
+    subgraph PHASE2["💧 Phase 2: Source Hydration<br/>source_hydrator.py"]
+        ENTITY_NODES --> HYDRATOR["SourceHydratorService<br/>hydrate_if_needed()"]
+        HYDRATOR --> HYDRATED_SIGNAL["Hydrated Signal<br/>(if was ID pointer)"]
+    end
+
+    %% =========================================================================
+    %% PHASE 3: ENRICHMENT (5 Adapters)
+    %% =========================================================================
+    subgraph PHASE3["🔬 Phase 3: Enrichment<br/>enrichment.py"]
+        HYDRATED_SIGNAL --> ENRICH["EnrichmentService<br/>enrich_signal_ckg()"]
+
+        subgraph ADAPTERS["Concurrent Adapters"]
+            SIEM_ADAPTER["SIEMAdapter<br/>siem.py"]
+            EDR_ADAPTER["EDRAdapter<br/>edr.py"]
+            TI_ADAPTER["ThreatIntelAdapter<br/>threat_intel.py"]
+            CMDB_ADAPTER["CMDBAdapter<br/>cmdb.py"]
+            VULN_ADAPTER["VulnerabilityAdapter<br/>vulnerability.py"]
+        end
+
+        ENRICH --> SIEM_ADAPTER
+        ENRICH --> EDR_ADAPTER
+        ENRICH --> TI_ADAPTER
+        ENRICH --> CMDB_ADAPTER
+        ENRICH --> VULN_ADAPTER
+
+        SIEM_ADAPTER --> ENRICHMENTS
+        EDR_ADAPTER --> ENRICHMENTS
+        TI_ADAPTER --> ENRICHMENTS
+        CMDB_ADAPTER --> ENRICHMENTS
+        VULN_ADAPTER --> ENRICHMENTS
+
+        ENRICHMENTS[/"EnrichmentResults<br/>Dict[adapter, result]"/]
+    end
+
+    %% =========================================================================
+    %% PHASE 4: HISTORICAL DATA (MANDATORY)
+    %% =========================================================================
+    subgraph PHASE4["📊 Phase 4: Historical Data<br/>historical_data.py"]
+        ENRICHMENTS --> HISTORICAL["HistoricalDataService<br/>fetch_for_signal()"]
+        HISTORICAL --> MULTI_TRACK["MultiTrackHistoricalData<br/>Track A: Detection<br/>Track B: Artifact<br/>Track C: Entity Behavior"]
+    end
+
+    %% =========================================================================
+    %% PHASE 5: FORECASTING (Multi-Track ETS)
+    %% =========================================================================
+    subgraph PHASE5["📈 Phase 5: Forecasting<br/>forecasting.py"]
+        MULTI_TRACK --> FORECAST["ForecastingService<br/>forecast_multi_track_ckg()"]
+
+        FORECAST --> TRACK_A["Track A: Detection ETS<br/>rule_id trend"]
+        FORECAST --> TRACK_B["Track B: Artifact ETS<br/>IoC trend"]
+        FORECAST --> TRACK_C["Track C: Behavior ETS<br/>entity trend"]
+
+        TRACK_A --> FORECAST_BUNDLE
+        TRACK_B --> FORECAST_BUNDLE
+        TRACK_C --> FORECAST_BUNDLE
+
+        FORECAST_BUNDLE[/"ForecastBundle<br/>3-track forecasts"/]
+    end
+
+    %% =========================================================================
+    %% PHASE 6: CASE CONTEXT LINKING (Subtype-Aware)
+    %% =========================================================================
+    subgraph PHASE6["🔗 Phase 6: Case Linking<br/>case_context_linking.py"]
+        FORECAST_BUNDLE --> LINKING["CaseContextLinkingService<br/>retrieve_rank_hydrate()"]
+
+        LINKING --> SIMILAR["Similar Cases<br/>(TF-IDF + entity match)"]
+        LINKING --> HARVEST["CaseArtifactHarvester<br/>runbook_refs + templates"]
+
+        SIMILAR --> LINKING_RESULT
+        HARVEST --> LINKING_RESULT
+
+        LINKING_RESULT[/"LinkingResult<br/>+ HarvestResult"/]
+    end
+
+    %% =========================================================================
+    %% PHASE 7: CLASSIFICATION (Subtype-Aware)
+    %% =========================================================================
+    subgraph PHASE7["⚖️ Phase 7: Classification<br/>classification.py"]
+        LINKING_RESULT --> CLASSIFY["ClassificationService<br/>classify_extended_ckg()"]
+
+        CLASSIFY --> TP_LIKELIHOOD["tp_likelihood<br/>weighted factors"]
+        TP_LIKELIHOOD --> DISPOSITION{_determine_disposition()}
+
+        DISPOSITION -->|≥0.8| LIKELY_TP["Likely True Positive"]
+        DISPOSITION -->|0.6-0.8| POSSIBLE_TP["Possible True Positive"]
+        DISPOSITION -->|0.3-0.5| POSSIBLE_FP["Possible False Positive"]
+        DISPOSITION -->|≤0.3| LIKELY_FP["Likely False Positive"]
+        DISPOSITION -->|0.5-0.6| INCONCLUSIVE["Inconclusive"]
+
+        LIKELY_TP --> CLASSIFICATION_RESULT
+        POSSIBLE_TP --> CLASSIFICATION_RESULT
+        POSSIBLE_FP --> CLASSIFICATION_RESULT
+        LIKELY_FP --> CLASSIFICATION_RESULT
+        INCONCLUSIVE --> CLASSIFICATION_RESULT
+
+        CLASSIFICATION_RESULT[/"ClassificationResult<br/>disposition + confidence"/]
+    end
+
+    %% =========================================================================
+    %% PHASE 8: RUNBOOK REGISTRY
+    %% =========================================================================
+    subgraph PHASE8["📖 Phase 8: Runbook Registry<br/>runbook_registry.py"]
+        CLASSIFICATION_RESULT --> RUNBOOK["RunbookRegistry<br/>fetch_applicable_runbooks()"]
+        RUNBOOK --> MERGED_RUNBOOKS["Merged Runbooks<br/>registry + harvested"]
+    end
+
+    %% =========================================================================
+    %% PHASE 9: ACTION PROPOSAL (6 Channels)
+    %% =========================================================================
+    subgraph PHASE9["🎯 Phase 9: Action Proposal<br/>action_proposal.py"]
+        MERGED_RUNBOOKS --> PROPOSE["ActionProposalService<br/>propose_actions_ckg()"]
+
+        subgraph ACTION_CHANNELS["6 Action Channels (by precedence)"]
+            CH_SEEDED["🥇 seeded<br/>Governed runbooks"]
+            CH_CASE_LINKED["🥈 case_linked<br/>SOAR archive"]
+            CH_LEARNED["🥉 learned<br/>Pattern-matched"]
+            CH_CONTEXTUAL["4️⃣ contextual<br/>From enrichments"]
+            CH_TEMPLATE["5️⃣ template<br/>Signal-type defaults"]
+            CH_AI["6️⃣ ai<br/>LLM-generated"]
+        end
+
+        PROPOSE --> CH_SEEDED
+        PROPOSE --> CH_CASE_LINKED
+        PROPOSE --> CH_LEARNED
+        PROPOSE --> CH_CONTEXTUAL
+        PROPOSE --> CH_TEMPLATE
+        PROPOSE --> CH_AI
+
+        CH_SEEDED --> ACTIONS
+        CH_CASE_LINKED --> ACTIONS
+        CH_LEARNED --> ACTIONS
+        CH_CONTEXTUAL --> ACTIONS
+        CH_TEMPLATE --> ACTIONS
+        CH_AI --> ACTIONS
+
+        ACTIONS[/"Deduplicated Actions<br/>List[Action]"/]
+    end
+
+    %% =========================================================================
+    %% PHASE 10: GOVERNANCE GATE
+    %% =========================================================================
+    subgraph PHASE10["🛡️ Phase 10: Governance Gate<br/>governance_gate.py"]
+        ACTIONS --> GATE["GovernanceGate<br/>evaluate()"]
+
+        GATE --> AUTO_CHECK{Classification?}
+
+        AUTO_CHECK -->|FP + TP_likelihood ≤ 0.1| AUTO_CLOSE["Auto-Close FP<br/>No actions needed"]
+        AUTO_CHECK -->|TP or Inconclusive| GATING
+
+        GATING{Per-Action Gating}
+
+        GATING -->|Low Risk + High Confidence| AUTO_EXEC["✅ auto_execute"]
+        GATING -->|High Risk or Low Confidence| APPROVAL["⏸️ requires_approval"]
+        GATING -->|Policy Violation| BLOCKED["❌ blocked"]
+
+        AUTO_EXEC --> GOVERNANCE_RESULT
+        APPROVAL --> GOVERNANCE_RESULT
+        BLOCKED --> GOVERNANCE_RESULT
+        AUTO_CLOSE --> GOVERNANCE_RESULT
+
+        GOVERNANCE_RESULT[/"GovernanceDecisionResult"/]
+    end
+
+    %% =========================================================================
+    %% PHASE 11: AI SERVICE (Optional)
+    %% =========================================================================
+    subgraph PHASE11["🤖 Phase 11: AI Overlay<br/>ai.py"]
+        GOVERNANCE_RESULT --> AI_CHECK{AI Service<br/>Configured?}
+
+        AI_CHECK -->|Yes| AI_SERVICE["AIService<br/>generate_overlay()"]
+        AI_CHECK -->|No| SKIP_AI["Skip AI Overlay"]
+
+        AI_SERVICE --> AI_OVERLAY["AIOverlay<br/>summary + root_cause<br/>+ action_eval"]
+        SKIP_AI --> NO_OVERLAY["None"]
+
+        AI_OVERLAY --> TRIAGE_REPORT
+        NO_OVERLAY --> TRIAGE_REPORT
+    end
+
+    %% =========================================================================
+    %% PHASE 12: REPORT SERVICE
+    %% =========================================================================
+    subgraph PHASE12["📄 Phase 12: Report Generation<br/>report.py"]
+        TRIAGE_REPORT["TriageReport Assembly<br/>_assemble_triage_report()"]
+
+        TRIAGE_REPORT --> REPORT_SVC["ReportService<br/>generate_report()"]
+
+        REPORT_SVC --> JINJA["Jinja2 Template<br/>triage_report.md.j2"]
+
+        JINJA --> MD_REPORT["📝 Markdown Report"]
+        TRIAGE_REPORT --> JSON_RESULT["📊 JSON TriageResult"]
+    end
+
+    %% =========================================================================
+    %% OUTPUT
+    %% =========================================================================
+    subgraph OUTPUT["📤 Output"]
+        MD_REPORT --> FINAL_OUTPUT["Final Outputs"]
+        JSON_RESULT --> FINAL_OUTPUT
+
+        FINAL_OUTPUT --> FILE_OUT["Files:<br/>report.md + result.json"]
+        FINAL_OUTPUT --> CONSOLE_OUT["Console:<br/>Phase-by-phase summary"]
+    end
+
+    %% =========================================================================
+    %% STYLING
+    %% =========================================================================
+    classDef ingestion fill:#e1f5fe,stroke:#01579b
+    classDef signalType fill:#fff3e0,stroke:#e65100
+    classDef service fill:#e8f5e9,stroke:#1b5e20
+    classDef adapter fill:#fce4ec,stroke:#880e4f
+    classDef decision fill:#fff9c4,stroke:#f57f17
+    classDef output fill:#f3e5f5,stroke:#4a148c
+    classDef channel fill:#e0f2f1,stroke:#004d40
+
+    class CLI,API,SIGNAL ingestion
+    class TYPE_CHECK,SIEM_BRANCH,IOC_BRANCH,CVE_BRANCH,HUNT_BRANCH,USER_BRANCH,EDR_BRANCH,EMAIL_BRANCH,TI_BRANCH,VULN_BRANCH,HUNT_F_BRANCH signalType
+    class BOOTSTRAP,CANON,HYDRATOR,ENRICH,HISTORICAL,FORECAST,LINKING,CLASSIFY,RUNBOOK,PROPOSE,GATE,AI_SERVICE,REPORT_SVC service
+    class SIEM_ADAPTER,EDR_ADAPTER,TI_ADAPTER,CMDB_ADAPTER,VULN_ADAPTER adapter
+    class DISPOSITION,AUTO_CHECK,GATING,AI_CHECK decision
+    class MD_REPORT,JSON_RESULT,FINAL_OUTPUT,FILE_OUT,CONSOLE_OUT output
+    class CH_SEEDED,CH_CASE_LINKED,CH_LEARNED,CH_CONTEXTUAL,CH_TEMPLATE,CH_AI channel
+```
+
+</details>
+
+## Pipeline Summary
+
+| Phase | Service                   | Input                    | Output                         |
+| ----- | ------------------------- | ------------------------ | ------------------------------ |
+| 1     | CaseBootstrapService      | Signal                   | TriageContextGraph + case_id   |
+| 1.5   | CanonicalizeService       | Graph                    | EntityNodes (canonical)        |
+| 2     | SourceHydratorService     | Signal (ID)              | Hydrated Signal                |
+| 3     | EnrichmentService         | Signal                   | EnrichmentResults (5 adapters) |
+| 4     | HistoricalDataService     | Signal                   | MultiTrackHistoricalData       |
+| 5     | ForecastingService        | Historical               | ForecastBundle (3 tracks)      |
+| 6     | CaseContextLinkingService | Signal + Graph           | SimilarCases + HarvestResult   |
+| 7     | ClassificationService     | All context              | ClassificationResult           |
+| 8     | RunbookRegistry           | Classification           | MergedRunbooks                 |
+| 9     | ActionProposalService     | All context              | Actions (6 channels)           |
+| 10    | GovernanceGate            | Actions + Classification | GovernanceDecisionResult       |
+| 11    | AIService                 | TriageReport             | AIOverlay (optional)           |
+| 12    | ReportService             | TriageReport + AIOverlay | MD + JSON output               |
+
+## Signal Types (SignalType Enum)
+
+```python
+class SignalType(str, Enum):
+    # Core signal types
+    SIEM_ALERT = "siem_alert"
+    IOC = "ioc"
+    CVE = "cve"
+    HUNT = "hunt"
+    USER_REPORT = "user_report"
+
+    # Extended signal types
+    EDR_DETECTION = "edr_detection"
+    EMAIL_SECURITY_ALERT = "email_security_alert"
+    TI_INDICATOR = "ti_indicator"
+    VULNERABILITY_ALERT = "vulnerability_alert"
+    HUNT_FINDING = "hunt_finding"
+```
+
+## Signal Subtypes (Content-Detected)
+
+| Subtype    | Detection Logic                                          |
+| ---------- | -------------------------------------------------------- |
+| `vuln`     | Direct: CVE, VULNERABILITY_ALERT                         |
+| `ioc`      | Direct: IOC, TI_INDICATOR                                |
+| `hunt`     | Direct: HUNT, HUNT_FINDING                               |
+| `user`     | Direct: USER_REPORT                                      |
+| `auth`     | Content: login, auth, password, credential, brute        |
+| `email`    | Content: email, phishing, spam, attachment               |
+| `network`  | Content: network, firewall, dns, c2, beacon              |
+| `endpoint` | Content: process, powershell, script, malware, execution |
+| `other`    | Fallback                                                 |
+
+## Action Source Precedence
+
+| Rank | Source        | Description                              |
+| ---- | ------------- | ---------------------------------------- |
+| 5    | `seeded`      | Governed runbooks - highest precedence   |
+| 4    | `case_linked` | SOAR archive - proven org intelligence   |
+| 3    | `learned`     | Pattern-matched from successful outcomes |
+| 2    | `contextual`  | Dynamic, generated from enrichments      |
+| 1    | `template`    | Fallback signal-type defaults            |
+| -    | `ai`          | LLM-generated (separate channel)         |
+
+## Disposition Thresholds
+
+| TP Likelihood | Disposition             |
+| ------------- | ----------------------- |
+| ≥ 0.8         | Likely True Positive    |
+| 0.6 - 0.8     | Possible True Positive  |
+| 0.5 - 0.6     | Inconclusive            |
+| 0.3 - 0.5     | Possible False Positive |
+| ≤ 0.3         | Likely False Positive   |
