@@ -236,6 +236,7 @@ class TriageService:
         # as part of enrichment (no separate DetectionResolver call needed)
 
         # Auto-fetch historical data if needed
+        forecast_fetch_error = None
         if (
             forecast_enabled
             and historical_data is None
@@ -245,10 +246,20 @@ class TriageService:
                 historical_data = await self.historical_data_service.fetch_for_signal(
                     signal
                 )
-            except Exception:
-                pass  # Graceful - forecasting will be skipped
+            except Exception as e:
+                # GAP 2 FIX: Log warning and track error for report metadata
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Auto-fetch historical data failed for {signal.signal_id}: {e}"
+                )
+                forecast_fetch_error = str(e)
+                # Graceful - forecasting will be skipped but error is now visible
 
         # Step 2: Multi-track ETS forecasting (if enabled + CKG graph writing)
+        # Requires historical_data to be non-None. If fetch_for_signal failed above,
+        # forecasting is gracefully skipped with forecast_fetch_error tracked.
         forecast_bundle = ForecastBundle(enabled=False)
         if forecast_enabled and historical_data:
             if self.enable_ckg and graph:
@@ -259,6 +270,14 @@ class TriageService:
                 forecast_bundle = self.forecasting_service.forecast_multi_track(
                     signal, historical_data
                 )
+        elif forecast_enabled and not historical_data and not forecast_fetch_error:
+            # Edge case: forecast_enabled but no data and no error (e.g., no historical_data_service)
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.info(
+                f"Forecasting skipped for {signal.signal_id}: No historical data available"
+            )
 
         # Step 3: Similar case retrieval with graph integration
         # NOTE: retrieve_rank_hydrate() handles:
@@ -305,8 +324,14 @@ class TriageService:
         )
 
         # Step 4.5: Runbook Matching (fetch from SOAR based on signal + classification)
+        # GAP 3 FIX: Pass harvested runbooks from similar cases to registry
+        harvested_runbooks = (
+            linking_result.harvest_result.runbook_refs_found
+            if linking_result.harvest_result
+            else []
+        )
         applicable_runbooks = await self.runbook_registry.fetch_applicable_runbooks(
-            signal, classification_result
+            signal, classification_result, harvested_runbooks=harvested_runbooks
         )
         # Pass runbooks to action proposal service (stored for later use)
 
@@ -344,6 +369,18 @@ class TriageService:
 
         recommendations = self._actions_to_recommendations(actions)
 
+        # GAP 1 FIX: Validate graph completeness before report assembly
+        if self.enable_ckg and graph:
+            validation_result = self._validate_graph_completeness(graph)
+            if not validation_result["is_complete"]:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Incomplete graph for {signal.signal_id}: "
+                    f"Missing {', '.join(validation_result['missing_types'])}"
+                )
+
         # Step 6: Assemble TriageReport
         triage_report = self._assemble_triage_report(
             signal=signal,
@@ -365,15 +402,22 @@ class TriageService:
         # Calculate duration
         duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
+        # Build forecast data with error tracking
+        forecast_data_result = (
+            {"enabled": forecast_bundle.enabled}
+            if forecast_bundle
+            else {"enabled": False}
+        )
+        if forecast_fetch_error:
+            forecast_data_result["fetch_error"] = forecast_fetch_error
+
         return TriageResult(
             signal=signal,
             enrichments=enrichments,
             classification=classification_result,
             actions=actions,
             report=report,
-            forecast_data=(
-                {"enabled": forecast_bundle.enabled} if forecast_bundle else None
-            ),
+            forecast_data=forecast_data_result,
             similar_cases=[(c.case_id, c.similarity) for c in similar_cases_models],
             duration_ms=duration_ms,
             triage_report=triage_report,
@@ -519,6 +563,70 @@ class TriageService:
             )
             for a in actions
         ]
+
+    def _validate_graph_completeness(self, graph: TriageContextGraph) -> Dict[str, Any]:
+        """Validate that graph has expected node types for complete evidence trail.
+
+        Args:
+            graph: The triage context graph to validate
+
+        Returns:
+            Dictionary with validation results:
+            {
+                "is_complete": bool,
+                "missing_types": List[str],
+                "node_counts": Dict[str, int],
+                "warnings": List[str]
+            }
+        """
+        from ..models.case_graph import NodeType
+
+        # Expected node types for a complete triage graph
+        expected_types = [
+            NodeType.CASE,
+            NodeType.SIGNAL,
+            NodeType.ENTITY,
+            NodeType.OBSERVATION,
+            NodeType.OUTCOME,
+        ]
+
+        # Optional but recommended types
+        recommended_types = [
+            NodeType.FORECAST,
+            NodeType.SIMILAR_CASE_REF,
+            NodeType.ACTION,
+        ]
+
+        missing_types = []
+        warnings = []
+        node_counts = {}
+
+        # Check for expected types
+        for node_type in expected_types:
+            nodes = graph.get_nodes_by_type(node_type)
+            node_counts[node_type.value] = len(nodes)
+            if not nodes:
+                missing_types.append(node_type.value)
+
+        # Check for recommended types
+        for node_type in recommended_types:
+            nodes = graph.get_nodes_by_type(node_type)
+            node_counts[node_type.value] = len(nodes)
+            if not nodes:
+                warnings.append(f"Recommended node type missing: {node_type.value}")
+
+        # Check edge connectivity
+        if len(graph.edges) < len(graph.nodes):
+            warnings.append(
+                f"Low connectivity: {len(graph.edges)} edges for {len(graph.nodes)} nodes"
+            )
+
+        return {
+            "is_complete": len(missing_types) == 0,
+            "missing_types": missing_types,
+            "node_counts": node_counts,
+            "warnings": warnings,
+        }
 
     def _augment_similar_cases_with_soar(
         self, signal: Signal, similar_cases_models: List

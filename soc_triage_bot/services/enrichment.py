@@ -35,8 +35,16 @@ class EnrichmentService:
 
         Returns:
             Dictionary mapping adapter name to enrichment result
-        """
-        # Run all enrichments concurrently
+        """  # OPTIMIZATION: Extract baseline enrichments once, before calling adapters
+        # This avoids parsing SOAR artifacts 5 times (once per adapter)
+        from .case_artifact_harvester import CaseArtifactHarvester
+
+        baseline_cache = CaseArtifactHarvester.extract_baseline_enrichments(signal)
+
+        # Store baseline in signal metadata for adapters to access
+        if baseline_cache and not signal.metadata.get("_baseline_cache"):
+            signal.metadata["_baseline_cache"] = baseline_cache
+            # Run all enrichments concurrently
         tasks = [adapter.enrich(signal) for adapter in self.adapters]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

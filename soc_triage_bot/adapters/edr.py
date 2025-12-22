@@ -58,12 +58,17 @@ class EDRAdapter(BaseAdapter):
         start_time = datetime.utcnow()
 
         try:
-            # Extract SOAR baseline if available
-            from ..services.case_artifact_harvester import CaseArtifactHarvester
+            # Extract SOAR baseline if available (use cached version if present)
+            baseline_cache = signal.metadata.get("_baseline_cache")
+            if baseline_cache:
+                soar_edr = baseline_cache.get("edr", {})
+            else:
+                # Fallback: extract if not cached
+                from ..services.case_artifact_harvester import CaseArtifactHarvester
 
-            soar_edr = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
-                "edr", {}
-            )
+                soar_edr = CaseArtifactHarvester.extract_baseline_enrichments(
+                    signal
+                ).get("edr", {})
 
             # Mock enrichment - in production, query EDR for:
             # - Process tree

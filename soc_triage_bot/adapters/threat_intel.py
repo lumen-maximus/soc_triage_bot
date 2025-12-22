@@ -62,12 +62,17 @@ class ThreatIntelAdapter(BaseAdapter):
         start_time = datetime.utcnow()
 
         try:
-            # Extract SOAR baseline if available
-            from ..services.case_artifact_harvester import CaseArtifactHarvester
+            # Extract SOAR baseline if available (use cached version if present)
+            baseline_cache = signal.metadata.get("_baseline_cache")
+            if baseline_cache:
+                soar_ti = baseline_cache.get("threatintel", {})
+            else:
+                # Fallback: extract if not cached
+                from ..services.case_artifact_harvester import CaseArtifactHarvester
 
-            soar_ti = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
-                "threatintel", {}
-            )
+                soar_ti = CaseArtifactHarvester.extract_baseline_enrichments(
+                    signal
+                ).get("threatintel", {})
 
             # Mock enrichment - in production, query TI sources for:
             # - IP/domain/hash reputation

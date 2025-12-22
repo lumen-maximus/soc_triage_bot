@@ -124,23 +124,37 @@ class RunbookRegistry:
         self,
         signal: Signal,
         classification: "ClassificationResult",
+        harvested_runbooks: Optional[List["RunbookRef"]] = None,
     ) -> List[Runbook]:
         """Fetch applicable runbooks from SOAR after classification.
+
+        GAP 3 FIX: Now accepts harvested runbooks from similar cases and merges them
+        with registry runbooks, avoiding duplicates.
 
         Args:
             signal: The signal being triaged
             classification: Classification result (TP/FP, severity, confidence)
+            harvested_runbooks: Optional list of RunbookRef from similar cases
 
         Returns:
-            List of Runbook objects fetched from SOAR
+            List of Runbook objects (merged from registry + harvested)
         """
         if not self.soar_adapter:
             return []
 
-        runbook_ids = self._determine_runbook_ids(signal, classification)
+        # Get runbook IDs from registry
+        registry_runbook_ids = self._determine_runbook_ids(signal, classification)
+
+        # Get runbook IDs from harvested references
+        harvested_runbook_ids = []
+        if harvested_runbooks:
+            harvested_runbook_ids = [ref.ref_id for ref in harvested_runbooks]
+
+        # Merge and deduplicate
+        all_runbook_ids = list(set(registry_runbook_ids + harvested_runbook_ids))
 
         runbooks = []
-        for runbook_id in runbook_ids:
+        for runbook_id in all_runbook_ids:
             # Check cache first
             if runbook_id in self._runbooks_cache:
                 runbooks.append(self._runbooks_cache[runbook_id])
@@ -192,10 +206,18 @@ class RunbookRegistry:
         if "phish" in title_lower or "phish" in desc_lower:
             runbook_ids.extend(self.signal_type_mappings.get("phishing", []))
         # Ransomware detection
-        elif "ransom" in title_lower or "ransom" in desc_lower or "encrypt" in title_lower:
+        elif (
+            "ransom" in title_lower
+            or "ransom" in desc_lower
+            or "encrypt" in title_lower
+        ):
             runbook_ids.extend(self.signal_type_mappings.get("ransomware", []))
         # Malware detection
-        elif "malware" in title_lower or "trojan" in title_lower or "virus" in title_lower:
+        elif (
+            "malware" in title_lower
+            or "trojan" in title_lower
+            or "virus" in title_lower
+        ):
             runbook_ids.extend(self.signal_type_mappings.get("malware", []))
         # Brute force
         elif "brute" in title_lower or "password" in title_lower:
@@ -205,12 +227,17 @@ class RunbookRegistry:
             runbook_ids.extend(self.signal_type_mappings.get(signal_type_key, []))
 
         # For high severity TP, add incident response playbooks
-        if classification.label == "TP" and classification.severity in ["high", "critical"]:
+        if classification.label == "TP" and classification.severity in [
+            "high",
+            "critical",
+        ]:
             runbook_ids.append("PB-INCIDENT-RESPONSE")
 
         return list(set(runbook_ids))  # Deduplicate
 
-    def _convert_soar_runbook(self, soar_data: Dict[str, Any], runbook_id: str) -> Optional[Runbook]:
+    def _convert_soar_runbook(
+        self, soar_data: Dict[str, Any], runbook_id: str
+    ) -> Optional[Runbook]:
         """Convert SOAR runbook data to internal Runbook model.
 
         Args:

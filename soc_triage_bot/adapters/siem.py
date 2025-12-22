@@ -67,12 +67,17 @@ class SIEMAdapter(BaseAdapter):
         start_time = datetime.utcnow()
 
         try:
-            # Extract SOAR baseline if available
-            from ..services.case_artifact_harvester import CaseArtifactHarvester
+            # Extract SOAR baseline if available (use cached version if present)
+            baseline_cache = signal.metadata.get("_baseline_cache")
+            if baseline_cache:
+                soar_siem = baseline_cache.get("siem", {})
+            else:
+                # Fallback: extract if not cached
+                from ..services.case_artifact_harvester import CaseArtifactHarvester
 
-            soar_siem = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
-                "siem", {}
-            )
+                soar_siem = CaseArtifactHarvester.extract_baseline_enrichments(
+                    signal
+                ).get("siem", {})
 
             # Mock enrichment - in production, query SIEM for:
             # - Historical alerts for same entities

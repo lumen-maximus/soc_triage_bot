@@ -40,6 +40,9 @@ class SignalRouter:
         Returns:
             Signal if SOAR container detected, None otherwise
         """
+        # REDUNDANCY 1 FIX: Consolidated detection - this is the single source of truth
+        # for SOAR container detection. Called from parse_signal_from_json() only once.
+
         # Check for SOAR-specific fields
         soar_indicators = 0
 

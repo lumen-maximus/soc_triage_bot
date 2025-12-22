@@ -58,12 +58,17 @@ class CMDBAdapter(BaseAdapter):
         start_time = datetime.utcnow()
 
         try:
-            # Extract SOAR baseline if available
-            from ..services.case_artifact_harvester import CaseArtifactHarvester
+            # Extract SOAR baseline if available (use cached version if present)
+            baseline_cache = signal.metadata.get("_baseline_cache")
+            if baseline_cache:
+                soar_cmdb = baseline_cache.get("cmdb", {})
+            else:
+                # Fallback: extract if not cached
+                from ..services.case_artifact_harvester import CaseArtifactHarvester
 
-            soar_cmdb = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
-                "cmdb", {}
-            )
+                soar_cmdb = CaseArtifactHarvester.extract_baseline_enrichments(
+                    signal
+                ).get("cmdb", {})
 
             # Mock enrichment - in production, query CMDB for:
             # - Asset details
