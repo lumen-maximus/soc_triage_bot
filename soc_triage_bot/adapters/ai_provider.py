@@ -322,7 +322,8 @@ class AnthropicProvider(BaseAIProvider):
 
         content = ""
         for block in message.content:
-            if hasattr(block, "text"):
+            # Type narrowing: only TextBlock has text attribute
+            if block.type == "text":
                 content += block.text
 
         return {

@@ -1,12 +1,14 @@
 """Main triage orchestration service.
 
 Orchestrates multi-track ETS forecasting and assembles TriageReport.
+Integrates Case Knowledge Graph (CKG) for evidence tracking and governance.
 """
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..models import Action, AIOverlay, EnrichmentResult, Signal
+from ..models.case_graph import TriageContextGraph, TriageMode
 from ..models.triage_report import (
     AssetContext,
     ClassificationResult,
@@ -22,9 +24,14 @@ from ..models.triage_report import (
     UserContext,
 )
 from .action_proposal import ActionProposalService
+from .case_bootstrap import CaseBootstrapService
+from .case_context_linking import CaseContextLinkingService
 from .classification import ClassificationService
+from .detection_resolver import DetectionResolver
 from .enrichment import EnrichmentService
+from .fetch_planner import FetchPlanner
 from .forecasting import ForecastingService, MultiTrackHistoricalData
+from .governance_gate import GovernanceGate
 from .report import ReportService
 from .similarity import SimilarityService
 
@@ -52,6 +59,8 @@ class TriageResult:
         # Structured output (same as classification, kept for API clarity)
         triage_report: Optional[TriageReport] = None,
         forecast_bundle: Optional[ForecastBundle] = None,
+        # CKG graph
+        graph: Optional[TriageContextGraph] = None,
     ):
         self.signal = signal
         self.enrichments = enrichments
@@ -70,6 +79,9 @@ class TriageResult:
         self.classification_result = classification  # Alias for clarity
         self.forecast_bundle = forecast_bundle
 
+        # CKG graph for evidence tracking
+        self.graph = graph
+
 
 class TriageService:
     """Main service orchestrating the complete triage workflow.
@@ -79,6 +91,13 @@ class TriageService:
     - Assembles complete TriageReport model
     - Returns structured TriageResult with full report
     - Optionally uses AIService for AI overlay generation
+
+    Case Knowledge Graph (CKG) integration:
+    - Uses CaseBootstrapService to initialize graph
+    - Uses FetchPlanner for delta-only enrichments
+    - Uses DetectionResolver to validate IOC/CVE detections
+    - Uses GovernanceGate to filter/approve actions
+    - Uses CaseContextLinking to link similar cases in graph
     """
 
     def __init__(
@@ -90,7 +109,14 @@ class TriageService:
         action_proposal_service: Optional[ActionProposalService] = None,
         report_service: Optional[ReportService] = None,
         ai_service: Optional["AIService"] = None,
-        historical_data_service: Optional["HistoricalDataService"] = None,
+        historical_data_service: Optional[Any] = None,
+        # CKG services
+        case_bootstrap_service: Optional[CaseBootstrapService] = None,
+        fetch_planner: Optional[FetchPlanner] = None,
+        detection_resolver: Optional[DetectionResolver] = None,
+        governance_gate: Optional[GovernanceGate] = None,
+        case_context_linking: Optional[CaseContextLinkingService] = None,
+        enable_ckg: bool = True,
     ):
         """Initialize triage service.
 
@@ -103,6 +129,12 @@ class TriageService:
             report_service: Service for report generation (optional)
             ai_service: Service for AI overlay generation (optional)
             historical_data_service: Service for historical data fetching (optional)
+            case_bootstrap_service: CKG bootstrap service (optional)
+            fetch_planner: CKG fetch planner for delta-only enrichment (optional)
+            detection_resolver: CKG detection resolver (optional)
+            governance_gate: CKG governance gate for action filtering (optional)
+            case_context_linking: CKG case linking service (optional)
+            enable_ckg: Enable CKG integration (default True)
         """
         self.enrichment_service = enrichment_service
         self.forecasting_service = forecasting_service or ForecastingService()
@@ -115,25 +147,52 @@ class TriageService:
         self.ai_service = ai_service  # None = no AI overlay
         self.historical_data_service = historical_data_service  # None = no auto-fetch
 
+        # CKG services
+        self.enable_ckg = enable_ckg
+        self.case_bootstrap_service = case_bootstrap_service or CaseBootstrapService()
+        self.fetch_planner = fetch_planner or FetchPlanner()
+        self.detection_resolver = detection_resolver or DetectionResolver()
+        self.governance_gate = governance_gate or GovernanceGate()
+        self.case_context_linking = case_context_linking or CaseContextLinkingService()
+
     async def triage_extended(
         self,
         signal: Signal,
         historical_data: Optional[MultiTrackHistoricalData] = None,
         ai_overlay: Optional[AIOverlay] = None,
         forecast_enabled: bool = True,
+        triage_mode: TriageMode = TriageMode.MIN_DELTA,
     ) -> TriageResult:
-        """Execute extended triage workflow with multi-track forecasting.
+        """Execute extended triage workflow with multi-track forecasting and CKG.
 
         Args:
             signal: Signal to triage
             historical_data: Structured multi-track historical data
             ai_overlay: Optional AI overlay for LLM-generated insights
             forecast_enabled: Whether to run ETS forecasting (default True)
+            triage_mode: CKG triage mode (default MIN_DELTA)
 
         Returns:
-            Complete triage result with TriageReport
+            Complete triage result with TriageReport and CKG graph
         """
         start_time = datetime.now(timezone.utc)
+
+        # =====================================================================
+        # CKG PHASE 1: Bootstrap graph
+        # =====================================================================
+        graph = None
+        if self.enable_ckg:
+            graph = self.case_bootstrap_service.bootstrap(signal, mode=triage_mode)
+
+        # =====================================================================
+        # CKG PHASE 2: Fetch Planning (determine what to enrich)
+        # =====================================================================
+        adapters_to_run = None
+        if self.enable_ckg and graph:
+            # FetchPlanner returns EnrichmentPlan (not awaitable)
+            fetch_plan = self.fetch_planner.plan(signal, graph)
+            # Note: Could use fetch_plan to filter adapters in future
+            # For now, we run all enrichments
 
         # Step 1: Concurrent enrichments (with evidence IDs)
         enrichments = await self.enrichment_service.enrich_signal(signal)
@@ -142,10 +201,22 @@ class TriageService:
         for idx, (adapter_name, result) in enumerate(enrichments.items()):
             result.generate_evidence_id(idx + 1)
 
+        # =====================================================================
+        # CKG PHASE 3: Detection Resolution (validate IOC/CVE presence)
+        # =====================================================================
+        if self.enable_ckg and graph:
+            await self.detection_resolver.resolve(signal, graph)
+
         # Auto-fetch historical data if needed
-        if forecast_enabled and historical_data is None and self.historical_data_service:
+        if (
+            forecast_enabled
+            and historical_data is None
+            and self.historical_data_service
+        ):
             try:
-                historical_data = await self.historical_data_service.fetch_for_signal(signal)
+                historical_data = await self.historical_data_service.fetch_for_signal(
+                    signal
+                )
             except Exception:
                 pass  # Graceful - forecasting will be skipped
 
@@ -160,12 +231,19 @@ class TriageService:
         # NOTE: SimilarCase models include runbook_refs, attachments_metadata
         # from SOAR. This is the SINGLE source - no re-fetching later.
         similar_cases_models = self.similarity_service.find_similar_as_models(signal)
-        
+
         # Augment with SOAR-linked cases if available
         similar_cases_models = self._augment_similar_cases_with_soar(
             signal, similar_cases_models
         )
-        
+
+        # =====================================================================
+        # CKG PHASE 4: Case Context Linking (add similar cases to graph)
+        # =====================================================================
+        if self.enable_ckg and graph and similar_cases_models:
+            # link_cases takes (signal, graph) and returns num links added
+            await self.case_context_linking.link_cases(signal, graph)
+
         similar_cases_tuples = [
             (c.case_id, c.similarity, c.outcome) for c in similar_cases_models
         ]
@@ -177,7 +255,7 @@ class TriageService:
             similar_cases=similar_cases_tuples,
             forecast=forecast_bundle,
         )
-        
+
         # Apply SOAR classification hints if available
         classification_result = self._apply_soar_classification_hints(
             signal, classification_result
@@ -191,6 +269,20 @@ class TriageService:
             similar_cases=similar_cases_tuples,
             similar_cases_models=similar_cases_models,
         )
+
+        # =====================================================================
+        # CKG PHASE 5: Governance Gate (filter/approve actions)
+        # =====================================================================
+        if self.enable_ckg:
+            # evaluate() returns GovernanceDecisionResult
+            governance_result = self.governance_gate.evaluate(
+                actions, classification_result, enrichments
+            )
+            # Use auto-execute and requires-approval actions, filter out blocked
+            actions = (
+                governance_result.auto_execute + governance_result.requires_approval
+            )
+
         recommendations = self._actions_to_recommendations(actions)
 
         # Step 6: Assemble TriageReport
@@ -227,6 +319,7 @@ class TriageService:
             duration_ms=duration_ms,
             triage_report=triage_report,
             forecast_bundle=forecast_bundle,
+            graph=graph,
         )
 
     def _assemble_triage_report(
@@ -372,21 +465,21 @@ class TriageService:
         self, signal: Signal, similar_cases_models: List
     ) -> List:
         """Augment similar cases with SOAR-linked related cases.
-        
+
         Merges SOAR-explicitly linked cases (100% similarity) with
         TF-IDF discovered cases, avoiding duplicates.
-        
+
         Args:
             signal: Signal with potential SOAR metadata
             similar_cases_models: List of SimilarCase models from TF-IDF
-            
+
         Returns:
             Merged list of similar cases, sorted by similarity
         """
         from ..models.triage_report import SimilarCase
-        
+
         all_cases = []
-        
+
         # Extract SOAR pre-linked cases if available
         if signal.metadata.get("soar_related_cases"):
             soar_case_ids = signal.metadata["soar_related_cases"]
@@ -396,41 +489,41 @@ class TriageService:
                     case_id=case_id,
                     similarity=1.0,  # SOAR explicitly linked = 100%
                     outcome="unknown",  # Would be fetched in production
-                    overlap_summary="soar_linked",
-                    actions_taken=[]
+                    overlap="soar_linked",
+                    actions_taken=[],
                 )
                 all_cases.append(similar_case)
-        
+
         # Add TF-IDF cases (avoiding duplicates)
         soar_ids = {c.case_id for c in all_cases}
         for case in similar_cases_models:
             if case.case_id not in soar_ids:
                 all_cases.append(case)
-        
+
         # Sort by similarity (descending)
         all_cases.sort(key=lambda c: c.similarity, reverse=True)
-        
+
         return all_cases[:10]  # Return top 10
 
     def _apply_soar_classification_hints(
         self, signal: Signal, classification: ClassificationResult
     ) -> ClassificationResult:
         """Apply SOAR analyst assessment as classification hint.
-        
+
         Uses SOAR status to adjust TP likelihood with 15% weight.
-        
+
         Args:
             signal: Signal with potential SOAR metadata
             classification: Base classification result
-            
+
         Returns:
             Classification with SOAR hints applied
         """
         soar_status = signal.metadata.get("soar_status", "").lower()
-        
+
         if not soar_status:
             return classification
-        
+
         # Adjust based on SOAR analyst assessment
         if any(kw in soar_status for kw in ["confirmed", "malicious", "true_positive"]):
             classification.tp_likelihood = min(1.0, classification.tp_likelihood + 0.15)
@@ -442,5 +535,5 @@ class TriageService:
             if classification.reasons_fp is None:
                 classification.reasons_fp = []
             classification.reasons_fp.append(f"SOAR analyst marked as {soar_status}")
-        
+
         return classification
