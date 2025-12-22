@@ -187,15 +187,14 @@ class TriageService:
         # =====================================================================
         # CKG PHASE 2: Fetch Planning (determine what to enrich)
         # =====================================================================
-        adapters_to_run = None
-        if self.enable_ckg and graph:
-            # FetchPlanner returns EnrichmentPlan (not awaitable)
-            fetch_plan = self.fetch_planner.plan(signal, graph)
-            # Note: Could use fetch_plan to filter adapters in future
-            # For now, we run all enrichments
+        # Note: FetchPlanner.plan() could be used to filter adapters in future
+        # For now, we run all enrichments
 
-        # Step 1: Concurrent enrichments (with evidence IDs)
-        enrichments = await self.enrichment_service.enrich_signal(signal)
+        # Step 1: Concurrent enrichments (with evidence IDs + CKG graph writing)
+        if self.enable_ckg and graph:
+            enrichments = await self.enrichment_service.enrich_signal_ckg(signal, graph)
+        else:
+            enrichments = await self.enrichment_service.enrich_signal(signal)
 
         # Generate evidence IDs for enrichments
         for idx, (adapter_name, result) in enumerate(enrichments.items()):
@@ -220,12 +219,17 @@ class TriageService:
             except Exception:
                 pass  # Graceful - forecasting will be skipped
 
-        # Step 2: Multi-track ETS forecasting (if enabled)
+        # Step 2: Multi-track ETS forecasting (if enabled + CKG graph writing)
         forecast_bundle = ForecastBundle(enabled=False)
         if forecast_enabled and historical_data:
-            forecast_bundle = self.forecasting_service.forecast_multi_track(
-                signal, historical_data
-            )
+            if self.enable_ckg and graph:
+                forecast_bundle = self.forecasting_service.forecast_multi_track_ckg(
+                    signal, historical_data, graph
+                )
+            else:
+                forecast_bundle = self.forecasting_service.forecast_multi_track(
+                    signal, historical_data
+                )
 
         # Step 3: Similar case retrieval (entity-based)
         # NOTE: SimilarCase models include runbook_refs, attachments_metadata
@@ -248,27 +252,46 @@ class TriageService:
             (c.case_id, c.similarity, c.outcome) for c in similar_cases_models
         ]
 
-        # Step 4: Extended classification
-        classification_result = self.classification_service.classify_extended(
-            signal=signal,
-            enrichments=enrichments,
-            similar_cases=similar_cases_tuples,
-            forecast=forecast_bundle,
-        )
+        # Step 4: Extended classification (with CKG graph writing)
+        if self.enable_ckg and graph:
+            classification_result = self.classification_service.classify_extended_ckg(
+                signal=signal,
+                enrichments=enrichments,
+                similar_cases=similar_cases_tuples,
+                forecast=forecast_bundle,
+                graph=graph,
+            )
+        else:
+            classification_result = self.classification_service.classify_extended(
+                signal=signal,
+                enrichments=enrichments,
+                similar_cases=similar_cases_tuples,
+                forecast=forecast_bundle,
+            )
 
         # Apply SOAR classification hints if available
         classification_result = self._apply_soar_classification_hints(
             signal, classification_result
         )
 
-        # Step 5: Action proposals -> Recommendations
-        actions = self.action_proposal_service.propose_actions(
-            signal=signal,
-            classification=classification_result,
-            enrichments=enrichments,
-            similar_cases=similar_cases_tuples,
-            similar_cases_models=similar_cases_models,
-        )
+        # Step 5: Action proposals -> Recommendations (with CKG graph writing)
+        if self.enable_ckg and graph:
+            actions = self.action_proposal_service.propose_actions_ckg(
+                signal=signal,
+                classification=classification_result,
+                enrichments=enrichments,
+                similar_cases=similar_cases_tuples,
+                similar_cases_models=similar_cases_models,
+                graph=graph,
+            )
+        else:
+            actions = self.action_proposal_service.propose_actions(
+                signal=signal,
+                classification=classification_result,
+                enrichments=enrichments,
+                similar_cases=similar_cases_tuples,
+                similar_cases_models=similar_cases_models,
+            )
 
         # =====================================================================
         # CKG PHASE 5: Governance Gate (filter/approve actions)

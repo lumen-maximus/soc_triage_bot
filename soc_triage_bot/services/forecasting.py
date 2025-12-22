@@ -18,6 +18,14 @@ import numpy as np
 
 from ..config import get_forecast_config, get_signal_type_config
 from ..models import Signal
+from ..models.case_graph import (
+    EdgeType,
+    EvidenceEdge,
+    ForecastNode,
+    NodeType,
+    Provenance,
+    TriageContextGraph,
+)
 from ..models.triage_report import (
     ForecastBacktest,
     ForecastBundle,
@@ -280,6 +288,113 @@ class ForecastingService:
             seasonality=ForecastSeasonality(mode="auto"),
             tracks=tracks,
         )
+
+    def forecast_multi_track_ckg(
+        self,
+        signal: Signal,
+        historical_data: MultiTrackHistoricalData,
+        graph: Optional[TriageContextGraph] = None,
+    ) -> ForecastBundle:
+        """Generate multi-track ETS forecast with CKG graph writing.
+
+        Args:
+            signal: The signal being triaged
+            historical_data: Structured historical data with track_a/b/c series
+            graph: Optional graph to write forecast nodes to
+
+        Returns:
+            ForecastBundle with forecast nodes written to graph
+        """
+        # Run standard forecast
+        forecast_bundle = self.forecast_multi_track(signal, historical_data)
+
+        # Write forecast nodes to graph if provided
+        if graph and forecast_bundle.enabled:
+            self._write_forecasts_to_graph(signal, forecast_bundle, graph)
+
+        return forecast_bundle
+
+    def _write_forecasts_to_graph(
+        self, signal: Signal, forecast_bundle: ForecastBundle, graph: TriageContextGraph
+    ) -> None:
+        """Write forecast results as forecast nodes to graph.
+
+        Args:
+            signal: The signal that was forecasted
+            forecast_bundle: Forecast results
+            graph: Graph to write forecast nodes to
+        """
+        from datetime import datetime
+
+        tracks_data = [
+            ("rule", forecast_bundle.tracks.rule),
+            ("ioc", forecast_bundle.tracks.ioc),
+            ("entity", forecast_bundle.tracks.entity),
+        ]
+
+        for track_name, track in tracks_data:
+            if track and track.latest:
+                forecast_node = ForecastNode(
+                    node_id=f"forecast_{track_name}_{signal.signal_id}_{int(datetime.now().timestamp())}",
+                    track_name=track_name,
+                    anomaly_score=(
+                        track.latest.anomaly_score
+                        if track.latest.anomaly_score
+                        else 0.0
+                    ),
+                    baseline=None,  # Not available in ForecastLatest
+                    current_vs_expected=(
+                        track.latest.current_vs_expected
+                        if track.latest.current_vs_expected
+                        else "baseline"
+                    ),
+                    provenance=Provenance(
+                        source_system="ForecastingService",
+                        confidence=0.9,
+                        evidence_refs=[f"signal_id:{signal.signal_id}"],
+                        query_fingerprint=f"forecast_{track_name}",
+                        ttl_seconds=3600,  # 1 hour
+                    ),
+                    properties={
+                        "track_name": track_name,
+                        "interpretation": track.interpretation,
+                        "confidence": track.confidence,
+                        "reliability": track.reliability,
+                        "metric_key": track.metric_key,
+                        "metric_name": track.metric_name,
+                        "series_window": track.series_window,
+                        "history_points": track.history_points,
+                        "horizons": (
+                            {k: v.dict() for k, v in track.horizons.items()}
+                            if track.horizons
+                            else {}
+                        ),
+                    },
+                )
+
+                graph.add_node(forecast_node)
+
+                # Add edge from case to forecast
+                case_nodes = graph.get_nodes_by_type(NodeType.CASE)
+                if case_nodes:
+                    edge = EvidenceEdge(
+                        edge_id=f"case_forecast_{forecast_node.node_id}",
+                        edge_type=EdgeType.ABOUT,  # Forecast is "about" the case
+                        source_node_id=case_nodes[0].node_id,
+                        target_node_id=forecast_node.node_id,
+                        provenance=Provenance(
+                            source_system="ForecastingService",
+                            confidence=0.95,
+                            query_fingerprint="case_forecast_link",
+                            ttl_seconds=3600,
+                        ),
+                        weight=(
+                            track.latest.anomaly_score
+                            if track.latest.anomaly_score
+                            else 0.5
+                        ),
+                    )
+                    graph.add_edge(edge)
 
     def _forecast_track(
         self,

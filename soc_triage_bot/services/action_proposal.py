@@ -26,6 +26,14 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ..models import Action, ActionType, ClassificationLabel, EnrichmentResult, Signal
+from ..models.case_graph import (
+    ActionNode,
+    EdgeType,
+    EvidenceEdge,
+    NodeType,
+    Provenance,
+    TriageContextGraph,
+)
 from ..models.triage_report import ClassificationResult
 
 # Lazy imports to avoid circular dependencies
@@ -711,6 +719,98 @@ class ActionProposalService:
         proposals = self._cap_proposals(proposals)
 
         return proposals
+
+    def propose_actions_ckg(
+        self,
+        signal: Signal,
+        classification: ClassificationResult,
+        enrichments: Dict[str, EnrichmentResult],
+        similar_cases: Optional[List[Tuple[str, float, str]]] = None,
+        similar_cases_models: Optional[List[Any]] = None,
+        graph: Optional[TriageContextGraph] = None,
+    ) -> List[Action]:
+        """Generate enterprise action proposals with CKG graph writing.
+
+        Args:
+            signal: The signal
+            classification: Classification result
+            enrichments: Enrichment results
+            similar_cases: Optional list of (case_id, similarity, outcome) tuples
+            similar_cases_models: Optional list of SimilarCase model objects
+            graph: Optional graph to write action nodes to
+
+        Returns:
+            List of proposed actions, with action nodes written to graph
+        """
+        # Run standard action proposal
+        actions = self.propose_actions(
+            signal, classification, enrichments, similar_cases, similar_cases_models
+        )
+
+        # Write action nodes to graph if provided
+        if graph:
+            self._write_actions_to_graph(signal, actions, graph)
+
+        return actions
+
+    def _write_actions_to_graph(
+        self, signal: Signal, actions: List[Action], graph: TriageContextGraph
+    ) -> None:
+        """Write action proposals as action nodes to graph.
+
+        Args:
+            signal: The signal that generated actions
+            actions: Proposed actions to write
+            graph: Graph to write action nodes to
+        """
+        from datetime import datetime
+
+        for i, action in enumerate(actions):
+            action_node = ActionNode(
+                node_id=f"action_{signal.signal_id}_{i}_{int(datetime.now().timestamp())}",
+                action_id=f"action_{signal.signal_id}_{i}",
+                action_type=action.action_type.value,
+                priority=action.priority,
+                status="proposed",
+                provenance=Provenance(
+                    source_system="ActionProposalService",
+                    confidence=0.85,
+                    evidence_refs=[f"signal_id:{signal.signal_id}"],
+                    query_fingerprint=f"action_proposal_{action.action_type.value}",
+                    ttl_seconds=86400,
+                ),
+                properties={
+                    "title": action.title,
+                    "description": action.description,
+                    "rationale": action.rationale,
+                    "reasoning": action.reasoning,
+                    "estimated_effort": action.estimated_effort,
+                    "automation_available": action.automation_available,
+                    "source": action.source,
+                    "steps": action.steps,
+                },
+            )
+
+            graph.add_node(action_node)
+
+            # Add edge from case to proposed action
+            case_nodes = graph.get_nodes_by_type(NodeType.CASE)
+            if case_nodes:
+                edge = EvidenceEdge(
+                    edge_id=f"case_proposes_{action_node.node_id}",
+                    edge_type=EdgeType.PROPOSES_ACTION,
+                    source_node_id=case_nodes[0].node_id,
+                    target_node_id=action_node.node_id,
+                    provenance=Provenance(
+                        source_system="ActionProposalService",
+                        confidence=0.9,
+                        query_fingerprint="case_action_proposal_link",
+                        ttl_seconds=86400,
+                    ),
+                    weight=float(action.priority)
+                    / 10.0,  # Normalize priority to weight
+                )
+                graph.add_edge(edge)
 
     def _generate_from_seeded_runbooks(
         self,

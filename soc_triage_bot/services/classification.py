@@ -7,6 +7,14 @@ Generates ClassificationResult with MITRE mapping and structured reasoning.
 from typing import Any, Dict, List, Optional
 
 from ..models import ClassificationLabel, EnrichmentResult, Signal
+from ..models.case_graph import (
+    EdgeType,
+    EvidenceEdge,
+    NodeType,
+    OutcomeNode,
+    Provenance,
+    TriageContextGraph,
+)
 from ..models.triage_report import ClassificationResult, ForecastBundle, MitreMapping
 
 
@@ -120,6 +128,35 @@ class ClassificationService:
             incident_type=self._determine_incident_type(signal, mitre),
             triage_judgment=triage_judgment,
         )
+
+    def classify_extended_ckg(
+        self,
+        signal: Signal,
+        enrichments: Dict[str, EnrichmentResult],
+        similar_cases: List[tuple],
+        forecast: Optional[ForecastBundle] = None,
+        graph: Optional[TriageContextGraph] = None,
+    ) -> ClassificationResult:
+        """Classify signal with CKG graph writing.
+
+        Args:
+            signal: The signal to classify
+            enrichments: Enrichment results with evidence_ids
+            similar_cases: List of (case_id, similarity, outcome) tuples
+            forecast: Multi-track ForecastBundle
+            graph: Optional graph to write outcome node to
+
+        Returns:
+            ClassificationResult with outcome written to graph
+        """
+        # Run standard classification
+        result = self.classify_extended(signal, enrichments, similar_cases, forecast)
+
+        # Write outcome node to graph if provided
+        if graph:
+            self._write_outcome_to_graph(signal, result, graph)
+
+        return result
 
     def _check_threat_intel_extended(
         self,
@@ -432,3 +469,69 @@ class ClassificationService:
                 f"Signal assessed as {disposition} ({tp_likelihood*100:.0f}% TP likelihood). "
                 "Evidence is inconclusive - additional investigation recommended."
             )
+
+    def _write_outcome_to_graph(
+        self,
+        signal: Signal,
+        classification: ClassificationResult,
+        graph: TriageContextGraph,
+    ) -> None:
+        """Write classification result as outcome node to graph.
+
+        Args:
+            signal: The signal that was classified
+            classification: Classification result
+            graph: Graph to write outcome to
+        """
+        from datetime import datetime
+
+        outcome_node = OutcomeNode(
+            node_id=f"outcome_{signal.signal_id}_{int(datetime.now().timestamp())}",
+            disposition=classification.disposition,
+            severity=classification.severity,
+            confidence=classification.confidence,
+            tp_likelihood=classification.tp_likelihood,
+            top_drivers=classification.reasons_tp,
+            contradictions=classification.reasons_fp,
+            provenance=Provenance(
+                source_system="ClassificationService",
+                confidence=0.95,
+                evidence_refs=[f"signal_id:{signal.signal_id}"],
+                query_fingerprint="classification_result",
+                ttl_seconds=86400,  # 24 hours
+            ),
+            properties={
+                "incident_type": classification.incident_type,
+                "triage_judgment": classification.triage_judgment,
+                "mitre_tactics": (
+                    classification.mitre.tactics
+                    if hasattr(classification, "mitre")
+                    else []
+                ),
+                "mitre_techniques": (
+                    classification.mitre.techniques
+                    if hasattr(classification, "mitre")
+                    else []
+                ),
+            },
+        )
+
+        graph.add_node(outcome_node)
+
+        # Add edge from case to outcome
+        case_nodes = graph.get_nodes_by_type(NodeType.CASE)
+        if case_nodes:
+            edge = EvidenceEdge(
+                edge_id=f"case_outcome_{outcome_node.node_id}",
+                edge_type=EdgeType.HAS_OUTCOME,
+                source_node_id=case_nodes[0].node_id,
+                target_node_id=outcome_node.node_id,
+                provenance=Provenance(
+                    source_system="ClassificationService",
+                    confidence=1.0,
+                    query_fingerprint="case_outcome_link",
+                    ttl_seconds=86400,
+                ),
+                weight=classification.tp_likelihood,
+            )
+            graph.add_edge(edge)
