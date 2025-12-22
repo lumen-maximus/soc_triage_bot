@@ -278,7 +278,9 @@ class SettingsLoader:
             provider=os.environ.get("EDR_PROVIDER", "mock"),
             api_url=os.environ.get("EDR_API_URL"),
             client_id_env=os.environ.get("EDR_CLIENT_ID_ENV", "EDR_CLIENT_ID"),
-            client_secret_env=os.environ.get("EDR_CLIENT_SECRET_ENV", "EDR_CLIENT_SECRET"),
+            client_secret_env=os.environ.get(
+                "EDR_CLIENT_SECRET_ENV", "EDR_CLIENT_SECRET"
+            ),
             api_key_env=os.environ.get("EDR_API_KEY_ENV", "EDR_API_KEY"),
             timeout_seconds=int(os.environ.get("EDR_TIMEOUT", "30")),
             verify_ssl=os.environ.get("EDR_VERIFY_SSL", "true").lower() == "true",
@@ -290,14 +292,25 @@ class SettingsLoader:
         # Load Threat Intel settings from environment
         ti_settings = ThreatIntelSettings(
             enabled=os.environ.get("TI_ENABLED", "false").lower() == "true",
-            virustotal_enabled=os.environ.get("TI_VT_ENABLED", "false").lower() == "true",
-            virustotal_api_key_env=os.environ.get("TI_VT_API_KEY_ENV", "VIRUSTOTAL_API_KEY"),
-            alienvault_enabled=os.environ.get("TI_AV_ENABLED", "false").lower() == "true",
-            alienvault_api_key_env=os.environ.get("TI_AV_API_KEY_ENV", "ALIENVAULT_API_KEY"),
-            abuseipdb_enabled=os.environ.get("TI_ABUSE_ENABLED", "false").lower() == "true",
-            abuseipdb_api_key_env=os.environ.get("TI_ABUSE_API_KEY_ENV", "ABUSEIPDB_API_KEY"),
+            virustotal_enabled=os.environ.get("TI_VT_ENABLED", "false").lower()
+            == "true",
+            virustotal_api_key_env=os.environ.get(
+                "TI_VT_API_KEY_ENV", "VIRUSTOTAL_API_KEY"
+            ),
+            alienvault_enabled=os.environ.get("TI_AV_ENABLED", "false").lower()
+            == "true",
+            alienvault_api_key_env=os.environ.get(
+                "TI_AV_API_KEY_ENV", "ALIENVAULT_API_KEY"
+            ),
+            abuseipdb_enabled=os.environ.get("TI_ABUSE_ENABLED", "false").lower()
+            == "true",
+            abuseipdb_api_key_env=os.environ.get(
+                "TI_ABUSE_API_KEY_ENV", "ABUSEIPDB_API_KEY"
+            ),
             custom_feed_url=os.environ.get("TI_CUSTOM_URL"),
-            custom_feed_api_key_env=os.environ.get("TI_CUSTOM_API_KEY_ENV", "TI_CUSTOM_API_KEY"),
+            custom_feed_api_key_env=os.environ.get(
+                "TI_CUSTOM_API_KEY_ENV", "TI_CUSTOM_API_KEY"
+            ),
             timeout_seconds=int(os.environ.get("TI_TIMEOUT", "30")),
             cache_ttl_hours=int(os.environ.get("TI_CACHE_TTL_HOURS", "24")),
             max_indicators_per_query=int(os.environ.get("TI_MAX_INDICATORS", "100")),
@@ -323,9 +336,14 @@ class SettingsLoader:
             provider=os.environ.get("VULN_PROVIDER", "mock"),
             nvd_api_key_env=os.environ.get("VULN_NVD_API_KEY_ENV", "NVD_API_KEY"),
             nvd_enabled=os.environ.get("VULN_NVD_ENABLED", "true").lower() == "true",
-            tenable_access_key_env=os.environ.get("VULN_TENABLE_ACCESS_ENV", "TENABLE_ACCESS_KEY"),
-            tenable_secret_key_env=os.environ.get("VULN_TENABLE_SECRET_ENV", "TENABLE_SECRET_KEY"),
-            tenable_enabled=os.environ.get("VULN_TENABLE_ENABLED", "false").lower() == "true",
+            tenable_access_key_env=os.environ.get(
+                "VULN_TENABLE_ACCESS_ENV", "TENABLE_ACCESS_KEY"
+            ),
+            tenable_secret_key_env=os.environ.get(
+                "VULN_TENABLE_SECRET_ENV", "TENABLE_SECRET_KEY"
+            ),
+            tenable_enabled=os.environ.get("VULN_TENABLE_ENABLED", "false").lower()
+            == "true",
             api_url=os.environ.get("VULN_API_URL"),
             timeout_seconds=int(os.environ.get("VULN_TIMEOUT", "30")),
             cache_ttl_hours=int(os.environ.get("VULN_CACHE_TTL_HOURS", "168")),
@@ -342,7 +360,8 @@ class SettingsLoader:
             timeout_seconds=int(os.environ.get("SOAR_TIMEOUT", "30")),
             verify_ssl=os.environ.get("SOAR_VERIFY_SSL", "true").lower() == "true",
             container_prefix=os.environ.get("SOAR_CONTAINER_PREFIX", "SOAR"),
-            auto_create_cases=os.environ.get("SOAR_AUTO_CREATE", "false").lower() == "true",
+            auto_create_cases=os.environ.get("SOAR_AUTO_CREATE", "false").lower()
+            == "true",
         )
 
         # Load database settings from environment

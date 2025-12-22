@@ -12,7 +12,7 @@ class ThreatIntelAdapter(BaseAdapter):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the adapter with configuration.
-        
+
         Args:
             config: Configuration dict with keys:
                 - enabled: bool
@@ -30,7 +30,7 @@ class ThreatIntelAdapter(BaseAdapter):
         """
         super().__init__(config)
         self.name = "threat_intel"  # Override to use underscore
-        
+
         # Store commonly used config values
         self.enabled = self.config.get("enabled", False)
         self.virustotal_enabled = self.config.get("virustotal_enabled", False)

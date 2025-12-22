@@ -188,13 +188,21 @@ class ServiceContainer:
             config = {
                 "enabled": settings.threat_intel.enabled,
                 "virustotal_enabled": settings.threat_intel.virustotal_enabled,
-                "virustotal_api_key": os.getenv(settings.threat_intel.virustotal_api_key_env),
+                "virustotal_api_key": os.getenv(
+                    settings.threat_intel.virustotal_api_key_env
+                ),
                 "alienvault_enabled": settings.threat_intel.alienvault_enabled,
-                "alienvault_api_key": os.getenv(settings.threat_intel.alienvault_api_key_env),
+                "alienvault_api_key": os.getenv(
+                    settings.threat_intel.alienvault_api_key_env
+                ),
                 "abuseipdb_enabled": settings.threat_intel.abuseipdb_enabled,
-                "abuseipdb_api_key": os.getenv(settings.threat_intel.abuseipdb_api_key_env),
+                "abuseipdb_api_key": os.getenv(
+                    settings.threat_intel.abuseipdb_api_key_env
+                ),
                 "custom_feed_url": settings.threat_intel.custom_feed_url,
-                "custom_feed_api_key": os.getenv(settings.threat_intel.custom_feed_api_key_env),
+                "custom_feed_api_key": os.getenv(
+                    settings.threat_intel.custom_feed_api_key_env
+                ),
                 "timeout": settings.threat_intel.timeout_seconds,
                 "cache_ttl_hours": settings.threat_intel.cache_ttl_hours,
                 "max_indicators": settings.threat_intel.max_indicators_per_query,
@@ -212,8 +220,12 @@ class ServiceContainer:
                 "provider": settings.vulnerability.provider,
                 "nvd_api_key": os.getenv(settings.vulnerability.nvd_api_key_env),
                 "nvd_enabled": settings.vulnerability.nvd_enabled,
-                "tenable_access_key": os.getenv(settings.vulnerability.tenable_access_key_env),
-                "tenable_secret_key": os.getenv(settings.vulnerability.tenable_secret_key_env),
+                "tenable_access_key": os.getenv(
+                    settings.vulnerability.tenable_access_key_env
+                ),
+                "tenable_secret_key": os.getenv(
+                    settings.vulnerability.tenable_secret_key_env
+                ),
                 "tenable_enabled": settings.vulnerability.tenable_enabled,
                 "api_url": settings.vulnerability.api_url,
                 "timeout": settings.vulnerability.timeout_seconds,
@@ -249,6 +261,7 @@ class ServiceContainer:
             settings = get_settings()
             if settings.soar.enabled:
                 from .adapters.soar import SOARAdapter
+
                 config = {
                     "enabled": settings.soar.enabled,
                     "provider": settings.soar.provider,
@@ -264,7 +277,7 @@ class ServiceContainer:
                 # Pass api_url and api_token directly for backward compatibility
                 self._soar_adapter = SOARAdapter(
                     api_url=settings.soar.api_url,
-                    api_token=os.getenv(settings.soar.api_token_env)
+                    api_token=os.getenv(settings.soar.api_token_env),
                 )
                 self._soar_adapter.config = config
         return self._soar_adapter

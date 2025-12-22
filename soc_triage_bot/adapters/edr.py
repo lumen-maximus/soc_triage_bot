@@ -12,7 +12,7 @@ class EDRAdapter(BaseAdapter):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize EDR adapter with configuration.
-        
+
         Args:
             config: Configuration dict with keys:
                 - enabled: bool
@@ -29,7 +29,7 @@ class EDRAdapter(BaseAdapter):
         """
         super().__init__(config)
         self.name = "edr"
-        
+
         # Store commonly used config values
         self.enabled = self.config.get("enabled", False)
         self.provider = self.config.get("provider", "mock")

@@ -21,7 +21,7 @@ class SIEMAdapter(BaseAdapter):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize SIEM adapter with configuration.
-        
+
         Args:
             config: Configuration dict with keys:
                 - enabled: bool
@@ -38,7 +38,7 @@ class SIEMAdapter(BaseAdapter):
         """
         super().__init__(config)
         self.name = "siem"
-        
+
         # Store commonly used config values as properties for easy access
         self.enabled = self.config.get("enabled", False)
         self.provider = self.config.get("provider", "mock")
