@@ -25,6 +25,7 @@ from .adapters import (
     VulnerabilityAdapter,
 )
 from .config.settings import get_settings
+from .container import ServiceContainer
 from .models import Signal, SignalSource, SignalType
 from .models.signal import (
     ArtifactContext,
@@ -32,9 +33,8 @@ from .models.signal import (
     EntityBehaviorContext,
     VulnerabilityContext,
 )
-from .services import AIService, EnrichmentService, HistoricalDataService, TriageService
+from .services import AIService, TriageService
 from .services.forecasting import MultiTrackHistoricalData
-from .services.signal_router import SignalRouter
 
 # =============================================================================
 # BANNER & UI/UX UTILITIES
@@ -188,56 +188,27 @@ def show_divider():
 
 
 def setup_triage_service(ai_enabled: bool = False, demo_mode: bool = False):
-    """Initialize the triage service.
+    """Initialize the triage service using ServiceContainer.
 
     Args:
         ai_enabled: Whether to enable AI overlay generation.
         demo_mode: Whether to run in demo mode with mock historical data.
+
+    Returns:
+        ServiceContainer with all dependencies configured
     """
-    adapters = [
-        SIEMAdapter(),
-        EDRAdapter(),
-        ThreatIntelAdapter(),
-        VulnerabilityAdapter(),
-        CMDBAdapter(),
-    ]
-
-    enrichment_service = EnrichmentService(adapters)
-
-    # Create AI service if enabled
-    ai_service = None
-    if ai_enabled:
-        settings = get_settings()
-        ai_service = AIService.from_settings(settings)
-
-    # Create historical data service based on mode
-    historical_data_service = None
-    if demo_mode:
-        # Demo mode: always use mock adapter
-        historical_data_service = HistoricalDataService([MockHistoricalAdapter()])
-    else:
-        # Live mode: get adapters that support historical queries
-        capable_adapters = []
-        for adapter in adapters:
-            # Check if adapter implements HistoricalQueryCapable protocol
-            if hasattr(adapter, "supports_historical_query") and callable(
-                getattr(adapter, "supports_historical_query")
-            ):
-                try:
-                    if adapter.supports_historical_query():
-                        capable_adapters.append(adapter)
-                except Exception:
-                    pass
-
-        # Create service if we have capable adapters
-        if capable_adapters:
-            historical_data_service = HistoricalDataService(capable_adapters)
-
-    return TriageService(
-        enrichment_service=enrichment_service,
-        ai_service=ai_service,
-        historical_data_service=historical_data_service,
+    container = ServiceContainer(
+        enable_ckg=True,
+        demo_mode=demo_mode,
     )
+
+    # Warn if AI requested but not configured
+    if ai_enabled and not container.ai_service:
+        click.echo(
+            f"  {c('⚠', Colors.YELLOW)} AI service requested but not configured in settings"
+        )
+
+    return container
 
 
 @click.group(invoke_without_command=True)
@@ -630,24 +601,16 @@ def health():
     """Check health of all adapters."""
     show_banner(subtitle="System Health Check")
 
-    adapters = [
-        SIEMAdapter(),
-        EDRAdapter(),
-        ThreatIntelAdapter(),
-        VulnerabilityAdapter(),
-        CMDBAdapter(),
-    ]
-
-    enrichment_service = EnrichmentService(adapters)
+    container = ServiceContainer()
 
     show_section("Adapter Status")
     show_step(1, "Checking adapter connectivity...", "running")
 
-    health_status = asyncio.run(enrichment_service.health_check())
+    health_status = asyncio.run(container.health_check())
 
     click.echo("")
-    for adapter_name, is_healthy in health_status.items():
-        if is_healthy:
+    for adapter_name, status in health_status.get("adapters", {}).items():
+        if status:
             click.echo(
                 f"  {c('●', Colors.GREEN)} {adapter_name}: {c('healthy', Colors.GREEN)}"
             )
@@ -656,14 +619,25 @@ def health():
                 f"  {c('●', Colors.RED)} {adapter_name}: {c('unhealthy', Colors.RED)}"
             )
 
-    healthy_count = sum(1 for h in health_status.values() if h)
-    total_count = len(health_status)
+    # Show other services
+    if health_status.get("ai_service", {}).get("enabled"):
+        click.echo(
+            f"  {c('●', Colors.GREEN)} AI Service: {c('configured', Colors.GREEN)}"
+        )
+
+    hist_status = health_status.get("historical_data", {})
+    if hist_status.get("status") == "available":
+        capable_count = hist_status.get("capable_adapters", 0)
+        click.echo(
+            f"  {c('●', Colors.GREEN)} Historical Data: {c(f'{capable_count} adapters', Colors.GREEN)}"
+        )
 
     show_divider()
-    if healthy_count == total_count:
-        show_success(f"All {total_count} adapters are healthy")
+    overall = health_status.get("overall", "unknown")
+    if overall == "healthy":
+        show_success("All systems healthy")
     else:
-        show_warning(f"{healthy_count}/{total_count} adapters healthy")
+        show_warning(f"System status: {overall}")
 
 
 @main.command()
@@ -723,12 +697,18 @@ async def execute_triage(
         ai_enabled: Whether to enable AI overlay generation
         demo_mode: Whether to run in demo mode with mock historical data
     """
-    triage_service = setup_triage_service(ai_enabled=ai_enabled, demo_mode=demo_mode)
+    container = setup_triage_service(ai_enabled=ai_enabled, demo_mode=demo_mode)
 
-    result = await triage_service.triage_extended(
-        signal, historical_data, forecast_enabled=forecast_enabled
-    )
-    return result
+    # Initialize container
+    await container.startup()
+
+    try:
+        result = await container.triage_service.triage_extended(
+            signal, historical_data, forecast_enabled=forecast_enabled
+        )
+        return result
+    finally:
+        await container.shutdown()
 
 
 # =============================================================================

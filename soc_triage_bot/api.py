@@ -1,64 +1,45 @@
 """FastAPI REST API for SOC Triage Bot."""
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from .adapters import (
-    CMDBAdapter,
-    EDRAdapter,
-    SIEMAdapter,
-    ThreatIntelAdapter,
-    VulnerabilityAdapter,
-)
-from .config.settings import get_settings
+from .container import ServiceContainer
 from .models import Signal, SignalSource, SignalType
-from .services import (
-    AIService,
-    CaseContextLinkingService,
-    EnrichmentService,
-    ForecastingService,
-    TriageService,
-)
 from .services.forecasting import MultiTrackHistoricalData
-
-# Get application settings
-settings = get_settings()
-
-# Initialize services
-adapters = [
-    SIEMAdapter(),
-    EDRAdapter(),
-    ThreatIntelAdapter(),
-    VulnerabilityAdapter(),
-    CMDBAdapter(),
-]
-
-enrichment_service = EnrichmentService(adapters)
-forecasting_service = ForecastingService()
-case_context_linking = CaseContextLinkingService()
-
-# Initialize AI service based on settings
-ai_service = AIService.from_settings(settings.ai) if settings.ai.enabled else None
-
-triage_service = TriageService(
-    enrichment_service=enrichment_service,
-    forecasting_service=forecasting_service,
-    case_context_linking=case_context_linking,
-    ai_service=ai_service,
-)
 
 # Store for triage results (in production, use database)
 triage_results: Dict[str, Any] = {}
 
-# Initialize FastAPI app
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan with container startup/shutdown."""
+    # Initialize service container
+    container = ServiceContainer(enable_ckg=True, demo_mode=False)
+
+    # Startup: initialize adapters and connections
+    await container.startup()
+
+    # Store container in app state
+    app.state.container = container
+
+    yield
+
+    # Shutdown: cleanup resources
+    await container.shutdown()
+
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title="SOC Triage Bot API",
     description="Async, SIEM-agnostic SOC triage agent service",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 
@@ -71,12 +52,12 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    adapter_health = await enrichment_service.health_check()
+    health_status = await container.health_check()
 
     return {
-        "status": "healthy",
+        "status": health_status.get("overall", "unknown"),
         "timestamp": datetime.utcnow().isoformat(),
-        "adapters": adapter_health,
+        "details": health_status,
     }
 
 
@@ -105,7 +86,7 @@ async def triage_signal(
     """
     try:
         # Execute extended triage with multi-track support
-        result = await triage_service.triage_extended(signal, historical_data)
+        result = await container.triage_service.triage_extended(signal, historical_data)
 
         # Store result
         triage_id = str(uuid.uuid4())

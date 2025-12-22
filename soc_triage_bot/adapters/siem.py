@@ -714,15 +714,21 @@ steps:
                 mitre_techniques=mock_alert.get("mitre_techniques", []),
             ),
             entity_context=EntityBehaviorContext(
-                hostname=mock_alert["entities"].get("hostname", [""])[0]
-                if "hostname" in mock_alert["entities"]
-                else None,
-                username=mock_alert["entities"].get("user", [""])[0]
-                if "user" in mock_alert["entities"]
-                else None,
-                src_ip=mock_alert["entities"].get("ip", [""])[0]
-                if "ip" in mock_alert["entities"]
-                else None,
+                hostname=(
+                    mock_alert["entities"].get("hostname", [""])[0]
+                    if "hostname" in mock_alert["entities"]
+                    else None
+                ),
+                username=(
+                    mock_alert["entities"].get("user", [""])[0]
+                    if "user" in mock_alert["entities"]
+                    else None
+                ),
+                src_ip=(
+                    mock_alert["entities"].get("ip", [""])[0]
+                    if "ip" in mock_alert["entities"]
+                    else None
+                ),
             ),
             artifact_context=ArtifactContext(
                 domain=mock_alert.get("indicators", {}).get("domain"),
@@ -767,20 +773,6 @@ steps:
             "mitre_techniques": ["T1059.001", "T1140"],
             "raw_data": {
                 "process_name": "powershell.exe",
-                "command_line": "powershell -enc BASE64_ENCODED_COMMAND",
-                "parent_process": "explorer.exe",
-                "event_count": 15,
-                "first_seen": datetime.utcnow().isoformat(),
-                "last_seen": datetime.utcnow().isoformat(),
-            },
-        }
-                "command_line": "powershell -enc BASE64_ENCODED_COMMAND",
-                "parent_process": "explorer.exe",
-                "event_count": 15,
-                "first_seen": datetime.utcnow().isoformat(),
-                "last_seen": datetime.utcnow().isoformat(),
-            },
-        }
                 "command_line": "powershell -enc BASE64_ENCODED_COMMAND",
                 "parent_process": "explorer.exe",
                 "event_count": 15,

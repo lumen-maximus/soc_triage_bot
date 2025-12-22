@@ -1,27 +1,23 @@
-"""RunbookRegistry capability for loading governed templates.
+"""RunbookRegistry capability for fetching governed runbooks from SOAR.
 
-Loads and manages runbooks/playbooks from:
-1. Local YAML files (templates/runbooks/*.yaml, templates/playbooks/*.yaml)
-2. SOAR references (by runbook_id, playbook_id, kb_id)
-
-These seeded templates are GOVERNED and take precedence over case-learned actions.
+Fetches runbooks from SOAR post-classification based on signal type and severity.
+SOAR is the authoritative source for all governed runbooks.
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
-
-import yaml
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..models import Action, ActionType, ClassificationLabel, Signal
 from ..models.triage_report import RunbookRef
+
+if TYPE_CHECKING:
+    from ..models.triage_report import ClassificationResult
 
 
 class RunbookSource(str, Enum):
     """Source of runbook content."""
 
-    SEEDED_LOCAL = "seeded_local"  # Local YAML/JSON files (governed)
     SOAR_REFS = "soar_refs"  # Fetched from SOAR by ID
     WIKI = "wiki"  # Fetched from internal wiki
     CONFLUENCE = "confluence"  # Fetched from Confluence
@@ -82,87 +78,154 @@ class Runbook:
 
 
 class RunbookRegistry:
-    """Registry for seeded and SOAR-referenced runbooks.
+    """Registry for SOAR-fetched runbooks/playbooks.
 
-    Capabilities:
-    - list_runbooks() -> List[Runbook]
-    - get_runbook(runbook_ref) -> Runbook
-    - extract_actions(runbook) -> List[RunbookAction]
-    - find_applicable_runbooks(signal, classification) -> List[Runbook]
+    Post-classification, fetches applicable runbooks from SOAR based on:
+    - Signal type (phishing, malware, ransomware, insider threat, etc.)
+    - Classification result (TP/FP/severity)
+    - Organization-specific runbook IDs
+
+    Note: Similar case runbooks come from CaseContextLinkingService harvest.
+    This service fetches additional governed runbooks from SOAR library.
     """
 
     def __init__(
         self,
-        templates_dir: Optional[Path] = None,
         soar_adapter: Optional[Any] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize runbook registry.
 
         Args:
-            templates_dir: Path to templates directory (defaults to soc_triage_bot/templates)
-            soar_adapter: Optional SOAR adapter for fetching remote runbooks
-            config: Configuration options
+            soar_adapter: SOAR adapter for fetching runbooks (required)
+            config: Configuration options (runbook_mappings, etc.)
         """
         self.config = config or {}
-
-        # Determine templates directory
-        if templates_dir:
-            self.templates_dir = Path(templates_dir)
-        else:
-            # Default to soc_triage_bot/templates relative to this file
-            current_file = Path(__file__)
-            self.templates_dir = current_file.parent.parent / "templates"
-
         self.soar_adapter = soar_adapter
 
-        # Cache for loaded runbooks
+        # Cache for fetched runbooks (keyed by runbook_id)
         self._runbooks_cache: Dict[str, Runbook] = {}
-        self._loaded = False
 
-        # Auto-load on init
-        self._load_all_runbooks()
+        # Signal type → SOAR runbook ID mappings (from config)
+        self.signal_type_mappings = self.config.get(
+            "signal_type_mappings",
+            {
+                "phishing": ["RB-PHISH-001", "PB-PHISH-RESPONSE"],
+                "malware": ["RB-MALWARE-001", "PB-MALWARE-CONTAINMENT"],
+                "ransomware": ["RB-RANSOM-001", "PB-RANSOMWARE-IR"],
+                "insider_threat": ["RB-INSIDER-001", "PB-INSIDER-THREAT"],
+                "data_exfil": ["RB-EXFIL-001", "PB-DATA-LOSS"],
+                "brute_force": ["RB-BRUTE-001"],
+                "vulnerability": ["RB-VULN-001", "PB-PATCH-MGMT"],
+            },
+        )
 
-    def _load_all_runbooks(self) -> None:
-        """Load all runbooks from local YAML files."""
-        if self._loaded:
-            return
+    async def fetch_applicable_runbooks(
+        self,
+        signal: Signal,
+        classification: "ClassificationResult",
+    ) -> List[Runbook]:
+        """Fetch applicable runbooks from SOAR after classification.
 
-        # Load runbooks
-        runbooks_dir = self.templates_dir / "runbooks"
-        if runbooks_dir.exists():
-            for yaml_file in runbooks_dir.glob("*.yaml"):
-                try:
-                    runbook = self._load_runbook_from_yaml(yaml_file)
-                    if runbook:
-                        self._runbooks_cache[runbook.id] = runbook
-                except Exception as e:
-                    print(f"Warning: Failed to load runbook {yaml_file}: {e}")
+        Args:
+            signal: The signal being triaged
+            classification: Classification result (TP/FP, severity, confidence)
 
-        # Load playbooks
-        playbooks_dir = self.templates_dir / "playbooks"
-        if playbooks_dir.exists():
-            for yaml_file in playbooks_dir.glob("*.yaml"):
-                try:
-                    playbook = self._load_playbook_from_yaml(yaml_file)
-                    if playbook:
-                        self._runbooks_cache[playbook.id] = playbook
-                except Exception as e:
-                    print(f"Warning: Failed to load playbook {yaml_file}: {e}")
+        Returns:
+            List of Runbook objects fetched from SOAR
+        """
+        if not self.soar_adapter:
+            return []
 
-        self._loaded = True
+        runbook_ids = self._determine_runbook_ids(signal, classification)
 
-    def _load_runbook_from_yaml(self, yaml_path: Path) -> Optional[Runbook]:
-        """Load a runbook from a YAML file."""
-        with open(yaml_path, "r") as f:
-            data = yaml.safe_load(f)
+        runbooks = []
+        for runbook_id in runbook_ids:
+            # Check cache first
+            if runbook_id in self._runbooks_cache:
+                runbooks.append(self._runbooks_cache[runbook_id])
+                continue
 
-        if not data or "metadata" not in data:
+            # Fetch from SOAR
+            try:
+                if hasattr(self.soar_adapter, "get_runbook"):
+                    soar_runbook = await self.soar_adapter.get_runbook(runbook_id)
+                    if soar_runbook:
+                        runbook = self._convert_soar_runbook(soar_runbook, runbook_id)
+                        if runbook:
+                            self._runbooks_cache[runbook_id] = runbook
+                            runbooks.append(runbook)
+            except Exception as e:
+                # Log but continue - don't fail triage for missing runbook
+                print(f"Warning: Failed to fetch runbook {runbook_id}: {e}")
+
+        return runbooks
+
+    def _determine_runbook_ids(
+        self,
+        signal: Signal,
+        classification: "ClassificationResult",
+    ) -> List[str]:
+        """Determine which SOAR runbook IDs to fetch based on signal + classification.
+
+        Args:
+            signal: The signal
+            classification: Classification result
+
+        Returns:
+            List of SOAR runbook IDs to fetch
+        """
+        runbook_ids = []
+
+        # Skip if FP with low confidence
+        if classification.label == "FP" and classification.confidence_score < 0.7:
+            return []
+
+        # Map signal type to runbook IDs
+        signal_type_key = signal.signal_type.value.lower()
+
+        # Check for specific detection keywords in title/description
+        title_lower = signal.title.lower() if signal.title else ""
+        desc_lower = signal.description.lower() if signal.description else ""
+
+        # Phishing detection
+        if "phish" in title_lower or "phish" in desc_lower:
+            runbook_ids.extend(self.signal_type_mappings.get("phishing", []))
+        # Ransomware detection
+        elif "ransom" in title_lower or "ransom" in desc_lower or "encrypt" in title_lower:
+            runbook_ids.extend(self.signal_type_mappings.get("ransomware", []))
+        # Malware detection
+        elif "malware" in title_lower or "trojan" in title_lower or "virus" in title_lower:
+            runbook_ids.extend(self.signal_type_mappings.get("malware", []))
+        # Brute force
+        elif "brute" in title_lower or "password" in title_lower:
+            runbook_ids.extend(self.signal_type_mappings.get("brute_force", []))
+        # Default: try signal type mapping
+        else:
+            runbook_ids.extend(self.signal_type_mappings.get(signal_type_key, []))
+
+        # For high severity TP, add incident response playbooks
+        if classification.label == "TP" and classification.severity in ["high", "critical"]:
+            runbook_ids.append("PB-INCIDENT-RESPONSE")
+
+        return list(set(runbook_ids))  # Deduplicate
+
+    def _convert_soar_runbook(self, soar_data: Dict[str, Any], runbook_id: str) -> Optional[Runbook]:
+        """Convert SOAR runbook data to internal Runbook model.
+
+        Args:
+            soar_data: Raw runbook data from SOAR adapter
+            runbook_id: ID of the runbook being converted
+
+        Returns:
+            Runbook instance or None if conversion fails
+        """
+        if not soar_data or "metadata" not in soar_data:
             return None
 
-        meta = data["metadata"]
-        conditions = data.get("conditions", {})
-        raw_actions = data.get("actions", [])
+        meta = soar_data["metadata"]
+        conditions = soar_data.get("conditions", {})
+        raw_actions = soar_data.get("actions", [])
 
         # Parse actions
         actions = []
@@ -203,76 +266,11 @@ class RunbookRegistry:
             approved_by=meta.get("approved_by", ""),
             approval_date=meta.get("approval_date", ""),
             review_cycle_days=meta.get("review_cycle_days", 90),
-            source=RunbookSource.SEEDED_LOCAL,
+            source=RunbookSource.SOAR_REFS,
             actions=actions,
             conditions=conditions,
             environment_specific=meta.get("environment_specific", False),
-            whitelisted=True,  # Seeded = governed = whitelisted
-        )
-
-    def _load_playbook_from_yaml(self, yaml_path: Path) -> Optional[Runbook]:
-        """Load a phased playbook from a YAML file."""
-        with open(yaml_path, "r") as f:
-            data = yaml.safe_load(f)
-
-        if not data or "metadata" not in data:
-            return None
-
-        meta = data["metadata"]
-        conditions = data.get("conditions", {})
-        phases = data.get("phases", [])
-
-        # Extract all actions from all phases
-        all_actions = []
-        for phase in phases:
-            phase_actions = phase.get("actions", [])
-            for action_data in phase_actions:
-                intent_str = action_data.get("intent", "INVESTIGATE")
-                try:
-                    intent = ActionIntent(intent_str.lower())
-                except ValueError:
-                    intent = ActionIntent.INVESTIGATE
-
-                all_actions.append(
-                    RunbookAction(
-                        id=action_data.get("id", ""),
-                        intent=intent,
-                        tool=action_data.get("tool", "SOAR"),
-                        owner=action_data.get("owner", "SOC"),
-                        title=action_data.get("title", ""),
-                        description=action_data.get("description", ""),
-                        steps=action_data.get("steps", []),
-                        priority=action_data.get("priority", 2),
-                        estimated_effort=action_data.get(
-                            "estimated_effort", "15 minutes"
-                        ),
-                        automation_available=action_data.get(
-                            "automation_available", False
-                        ),
-                        risk_tier=action_data.get("risk_tier", "LOW"),
-                        approval_required=action_data.get("approval_required", False),
-                        approvers=action_data.get("approvers", []),
-                    )
-                )
-
-        return Runbook(
-            id=meta.get("id", ""),
-            version=meta.get("version", "1.0"),
-            title=meta.get("title", ""),
-            description=meta.get("description", ""),
-            category=meta.get("category", ""),
-            signal_types=meta.get("signal_types", []),
-            severity_levels=meta.get("severity_levels", []),
-            author=meta.get("author", ""),
-            approved_by=meta.get("approved_by", ""),
-            approval_date=meta.get("approval_date", ""),
-            review_cycle_days=meta.get("review_cycle_days", 90),
-            source=RunbookSource.SEEDED_LOCAL,
-            actions=all_actions,
-            conditions=conditions,
-            phases=phases,
-            environment_specific=meta.get("environment_specific", False),
-            whitelisted=True,
+            whitelisted=True,  # SOAR runbooks = governed = whitelisted
         )
 
     # =========================================================================
@@ -280,14 +278,14 @@ class RunbookRegistry:
     # =========================================================================
 
     def list_runbooks(self) -> List[Runbook]:
-        """List all available runbooks.
+        """List all cached runbooks.
 
         Returns:
-            List of all loaded runbooks/playbooks
+            List of all runbooks in cache
         """
         return list(self._runbooks_cache.values())
 
-    def get_runbook(self, runbook_ref: str) -> Optional[Runbook]:
+    async def get_runbook(self, runbook_ref: str) -> Optional[Runbook]:
         """Get a specific runbook by ID or reference.
 
         Args:
@@ -303,10 +301,10 @@ class RunbookRegistry:
         # Try to fetch from SOAR if adapter available
         if self.soar_adapter and hasattr(self.soar_adapter, "get_runbook"):
             try:
-                soar_runbook = self.soar_adapter.get_runbook(runbook_ref)
+                soar_runbook = await self.soar_adapter.get_runbook(runbook_ref)
                 if soar_runbook:
                     # Convert to our Runbook format
-                    runbook = self._convert_soar_runbook(soar_runbook)
+                    runbook = self._convert_soar_runbook(soar_runbook, runbook_ref)
                     if runbook:
                         self._runbooks_cache[runbook_ref] = runbook
                         return runbook
@@ -315,7 +313,7 @@ class RunbookRegistry:
 
         return None
 
-    def get_runbook_from_ref(self, ref: RunbookRef) -> Optional[Runbook]:
+    async def get_runbook_from_ref(self, ref: RunbookRef) -> Optional[Runbook]:
         """Get runbook from a RunbookRef object.
 
         Args:
@@ -324,7 +322,7 @@ class RunbookRegistry:
         Returns:
             Runbook if found and accessible
         """
-        return self.get_runbook(ref.ref_id)
+        return await self.get_runbook(ref.ref_id)
 
     def extract_actions(self, runbook: Runbook) -> List[RunbookAction]:
         """Extract all actions from a runbook.
@@ -455,58 +453,6 @@ class RunbookRegistry:
 
         return actions
 
-    def _convert_soar_runbook(self, soar_data: Dict[str, Any]) -> Optional[Runbook]:
-        """Convert SOAR-fetched runbook to our format.
-
-        Override this method for specific SOAR integrations.
-        """
-        # Default implementation - expects SOAR to return similar format
-        if not soar_data:
-            return None
-
-        # Extract actions
-        actions = []
-        for action_data in soar_data.get("actions", []):
-            intent_str = action_data.get("intent", "INVESTIGATE")
-            try:
-                intent = ActionIntent(intent_str.lower())
-            except ValueError:
-                intent = ActionIntent.INVESTIGATE
-
-            actions.append(
-                RunbookAction(
-                    id=action_data.get("id", ""),
-                    intent=intent,
-                    tool=action_data.get("tool", "SOAR"),
-                    owner=action_data.get("owner", "SOC"),
-                    title=action_data.get("title", ""),
-                    description=action_data.get("description", ""),
-                    steps=action_data.get("steps", []),
-                    priority=action_data.get("priority", 2),
-                    estimated_effort=action_data.get("estimated_effort", "15 minutes"),
-                    automation_available=action_data.get("automation_available", False),
-                    risk_tier=action_data.get("risk_tier", "LOW"),
-                )
-            )
-
-        return Runbook(
-            id=soar_data.get("id", ""),
-            version=soar_data.get("version", "1.0"),
-            title=soar_data.get("title", ""),
-            description=soar_data.get("description", ""),
-            category=soar_data.get("category", ""),
-            signal_types=soar_data.get("signal_types", []),
-            severity_levels=soar_data.get("severity_levels", []),
-            author=soar_data.get("author", ""),
-            approved_by=soar_data.get("approved_by", ""),
-            approval_date=soar_data.get("approval_date", ""),
-            review_cycle_days=soar_data.get("review_cycle_days", 90),
-            source=RunbookSource.SOAR_REFS,
-            actions=actions,
-            conditions=soar_data.get("conditions", {}),
-            whitelisted=False,  # SOAR runbooks not whitelisted by default
-        )
-
     def get_stats(self) -> Dict[str, Any]:
         """Get registry statistics.
 
@@ -516,7 +462,7 @@ class RunbookRegistry:
         runbooks = list(self._runbooks_cache.values())
 
         categories: Dict[str, int] = {}
-        signal_types: Set[str] = set()
+        signal_types: set = set()
         total_actions = 0
 
         for rb in runbooks:
@@ -531,9 +477,6 @@ class RunbookRegistry:
             "categories": categories,
             "signal_types_covered": list(signal_types),
             "sources": {
-                "seeded_local": sum(
-                    1 for rb in runbooks if rb.source == RunbookSource.SEEDED_LOCAL
-                ),
                 "soar_refs": sum(
                     1 for rb in runbooks if rb.source == RunbookSource.SOAR_REFS
                 ),

@@ -24,10 +24,10 @@ from ..models.triage_report import (
     UserContext,
 )
 from .action_proposal import ActionProposalService
+from .canonicalize import CanonicalizeService
 from .case_bootstrap import CaseBootstrapService
 from .case_context_linking import CaseContextLinkingService
 from .classification import ClassificationService
-from .detection_resolver import DetectionResolver
 from .enrichment import EnrichmentService
 from .fetch_planner import FetchPlanner
 from .forecasting import ForecastingService, MultiTrackHistoricalData
@@ -95,69 +95,70 @@ class TriageService:
 
     Case Knowledge Graph (CKG) integration:
     - Uses CaseBootstrapService to initialize graph
+    - Uses CanonicalizeService to normalize entities
     - Uses FetchPlanner for delta-only enrichments
-    - Uses DetectionResolver to validate IOC/CVE detections
     - Uses GovernanceGate to filter/approve actions
     - Uses CaseContextLinking to link similar cases in graph
+    - Detection presence handled by SIEM/EDR adapters in enrichment
     """
 
     def __init__(
         self,
         enrichment_service: EnrichmentService,
-        forecasting_service: Optional[ForecastingService] = None,
-        classification_service: Optional[ClassificationService] = None,
-        action_proposal_service: Optional[ActionProposalService] = None,
-        report_service: Optional[ReportService] = None,
+        forecasting_service: ForecastingService,
+        classification_service: ClassificationService,
+        action_proposal_service: ActionProposalService,
+        report_service: ReportService,
+        case_bootstrap_service: CaseBootstrapService,
+        canonicalize_service: CanonicalizeService,
+        source_hydrator: SourceHydrator,
+        fetch_planner: FetchPlanner,
+        governance_gate: GovernanceGate,
+        runbook_registry: RunbookRegistry,
+        case_context_linking: CaseContextLinkingService,
         ai_service: Optional["AIService"] = None,
         historical_data_service: Optional[Any] = None,
-        # CKG services
-        case_bootstrap_service: Optional[CaseBootstrapService] = None,
-        source_hydrator: Optional[SourceHydrator] = None,
-        fetch_planner: Optional[FetchPlanner] = None,
-        detection_resolver: Optional[DetectionResolver] = None,
-        governance_gate: Optional[GovernanceGate] = None,
-        runbook_registry: Optional[RunbookRegistry] = None,
-        case_context_linking: Optional[CaseContextLinkingService] = None,
         enable_ckg: bool = True,
     ):
-        """Initialize triage service.
+        """Initialize triage service with dependency injection.
+
+        All services must be provided explicitly via ServiceContainer.
+        No default instantiation to enforce proper dependency management.
 
         Args:
-            enrichment_service: Service for signal enrichment
-            forecasting_service: Service for ETS forecasting (optional)
-            classification_service: Service for classification (optional)
-            action_proposal_service: Service for action proposals (optional)
-            report_service: Service for report generation (optional)
+            enrichment_service: Service for signal enrichment (REQUIRED)
+            forecasting_service: Service for ETS forecasting (REQUIRED)
+            classification_service: Service for classification (REQUIRED)
+            action_proposal_service: Service for action proposals (REQUIRED)
+            report_service: Service for report generation (REQUIRED)
+            case_bootstrap_service: CKG bootstrap service (REQUIRED)
+            canonicalize_service: CKG entity canonicalization service (REQUIRED)
+            source_hydrator: Source payload hydrator (REQUIRED)
+            fetch_planner: CKG fetch planner for delta-only enrichment (REQUIRED)
+            governance_gate: CKG governance gate for action filtering (REQUIRED)
+            runbook_registry: Runbook/playbook registry for governed templates (REQUIRED)
+            case_context_linking: CKG case linking service (REQUIRED)
             ai_service: Service for AI overlay generation (optional)
             historical_data_service: Service for historical data fetching (optional)
-            case_bootstrap_service: CKG bootstrap service (optional)
-            source_hydrator: Source payload hydrator (optional)
-            fetch_planner: CKG fetch planner for delta-only enrichment (optional)
-            detection_resolver: CKG detection resolver (optional)
-            governance_gate: CKG governance gate for action filtering (optional)
-            runbook_registry: Runbook/playbook registry for governed templates (optional)
-            case_context_linking: CKG case linking service (optional)
             enable_ckg: Enable CKG integration (default True)
         """
         self.enrichment_service = enrichment_service
-        self.forecasting_service = forecasting_service or ForecastingService()
-        self.classification_service = classification_service or ClassificationService()
-        self.action_proposal_service = (
-            action_proposal_service or ActionProposalService()
-        )
-        self.report_service = report_service or ReportService()
-        self.ai_service = ai_service  # None = no AI overlay
-        self.historical_data_service = historical_data_service  # None = no auto-fetch
+        self.forecasting_service = forecasting_service
+        self.classification_service = classification_service
+        self.action_proposal_service = action_proposal_service
+        self.report_service = report_service
+        self.ai_service = ai_service
+        self.historical_data_service = historical_data_service
 
         # CKG services
         self.enable_ckg = enable_ckg
-        self.case_bootstrap_service = case_bootstrap_service or CaseBootstrapService()
-        self.source_hydrator = source_hydrator or SourceHydrator()
-        self.fetch_planner = fetch_planner or FetchPlanner()
-        self.detection_resolver = detection_resolver or DetectionResolver()
-        self.governance_gate = governance_gate or GovernanceGate()
-        self.runbook_registry = runbook_registry or RunbookRegistry()
-        self.case_context_linking = case_context_linking or CaseContextLinkingService()
+        self.case_bootstrap_service = case_bootstrap_service
+        self.canonicalize_service = canonicalize_service
+        self.source_hydrator = source_hydrator
+        self.fetch_planner = fetch_planner
+        self.governance_gate = governance_gate
+        self.runbook_registry = runbook_registry
+        self.case_context_linking = case_context_linking
 
     async def triage_extended(
         self,
@@ -189,7 +190,17 @@ class TriageService:
             graph = self.case_bootstrap_service.bootstrap(signal, mode=triage_mode)
 
         # =====================================================================
-        # PHASE 1.5: Source Hydration (if signal is just an ID pointer)
+        # CKG PHASE 1.5: Entity Canonicalization
+        # =====================================================================
+        if self.enable_ckg and graph:
+            # Extract and normalize entities into canonical graph nodes
+            canonical_entities = self.canonicalize_service.canonicalize_entities(
+                signal, graph
+            )
+            # canonical_entities is Dict[canonical_id, EntityNode] added to graph
+
+        # =====================================================================
+        # PHASE 2: Source Hydration (if signal is just an ID pointer)
         # =====================================================================
         signal, hydration_meta = await self.source_hydrator.hydrate_if_needed(signal)
         # If hydrated, optionally add observation node to graph
@@ -203,7 +214,7 @@ class TriageService:
             pass
 
         # =====================================================================
-        # CKG PHASE 2: Fetch Planning (determine what to enrich)
+        # CKG PHASE 3: Fetch Planning (determine what to enrich)
         # =====================================================================
         # Note: FetchPlanner.plan() could be used to filter adapters in future
         # For now, we run all enrichments
@@ -218,11 +229,8 @@ class TriageService:
         for idx, (adapter_name, result) in enumerate(enrichments.items()):
             result.generate_evidence_id(idx + 1)
 
-        # =====================================================================
-        # CKG PHASE 3: Detection Resolution (validate IOC/CVE presence)
-        # =====================================================================
-        if self.enable_ckg and graph:
-            await self.detection_resolver.resolve(signal, graph)
+        # Note: Detection presence is now handled by SIEM/EDR adapters
+        # as part of enrichment (no separate DetectionResolver call needed)
 
         # Auto-fetch historical data if needed
         if (
@@ -292,8 +300,8 @@ class TriageService:
             signal, classification_result
         )
 
-        # Step 4.5: Runbook Matching (select governed templates)
-        applicable_runbooks = self.runbook_registry.find_applicable_runbooks(
+        # Step 4.5: Runbook Matching (fetch from SOAR based on signal + classification)
+        applicable_runbooks = await self.runbook_registry.fetch_applicable_runbooks(
             signal, classification_result
         )
         # Pass runbooks to action proposal service (stored for later use)

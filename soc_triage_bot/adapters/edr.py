@@ -27,7 +27,10 @@ class EDRAdapter(BaseAdapter):
         try:
             # Extract SOAR baseline if available
             from ..services.case_artifact_harvester import CaseArtifactHarvester
-            soar_edr = CaseArtifactHarvester.extract_baseline_enrichments(signal).get("edr", {})
+
+            soar_edr = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
+                "edr", {}
+            )
 
             # Mock enrichment - in production, query EDR for:
             # - Process tree
@@ -39,7 +42,7 @@ class EDRAdapter(BaseAdapter):
                 "host_online": True,
                 "containment_status": "not_contained",
                 "agent_version": "7.2.1",
-                "last_seen": datetime.utcnow().isoformat()
+                "last_seen": datetime.utcnow().isoformat(),
             }
 
             # Add process information if available
@@ -49,7 +52,7 @@ class EDRAdapter(BaseAdapter):
                     "command_line": signal.raw_data.get("command_line", ""),
                     "child_processes": [],
                     "network_connections": [],
-                    "file_modifications": []
+                    "file_modifications": [],
                 }
 
             # Add host information
@@ -58,7 +61,7 @@ class EDRAdapter(BaseAdapter):
                     "os": "Windows 10 Enterprise",
                     "criticality": "medium",
                     "patch_level": "2024-11",
-                    "installed_software": []
+                    "installed_software": [],
                 }
 
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
@@ -71,7 +74,7 @@ class EDRAdapter(BaseAdapter):
                 adapter=self.name,
                 status=EnrichmentStatus.SUCCESS,
                 data=enrichment_data,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
 
         except Exception as e:
@@ -80,7 +83,5 @@ class EDRAdapter(BaseAdapter):
                 adapter=self.name,
                 status=EnrichmentStatus.FAILED,
                 error=str(e),
-                duration_ms=duration_ms
-            )
-            )
+                duration_ms=duration_ms,
             )

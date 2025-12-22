@@ -29,7 +29,10 @@ class CMDBAdapter(BaseAdapter):
         try:
             # Extract SOAR baseline if available
             from ..services.case_artifact_harvester import CaseArtifactHarvester
-            soar_cmdb = CaseArtifactHarvester.extract_baseline_enrichments(signal).get("cmdb", {})
+
+            soar_cmdb = CaseArtifactHarvester.extract_baseline_enrichments(signal).get(
+                "cmdb", {}
+            )
 
             # Mock enrichment - in production, query CMDB for:
             # - Asset details
@@ -37,9 +40,7 @@ class CMDBAdapter(BaseAdapter):
             # - Owner information
             # - Compliance requirements
 
-            enrichment_data: Dict[str, Any] = {
-                "assets_found": 0
-            }
+            enrichment_data: Dict[str, Any] = {"assets_found": 0}
 
             # Check hostnames
             if "hostname" in signal.entities:
@@ -53,7 +54,7 @@ class CMDBAdapter(BaseAdapter):
                         "compliance_scope": ["SOC2", "PCI-DSS"],
                         "business_function": "Development",
                         "environment": "production",
-                        "cost_center": "ENG-001"
+                        "cost_center": "ENG-001",
                     }
                     enrichment_data["assets_found"] += 1
 
@@ -67,7 +68,7 @@ class CMDBAdapter(BaseAdapter):
                         "title": "Software Engineer",
                         "manager": "Jane Doe",
                         "privileged_access": False,
-                        "clearance_level": "standard"
+                        "clearance_level": "standard",
                     }
                     enrichment_data["assets_found"] += 1
 
@@ -80,7 +81,7 @@ class CMDBAdapter(BaseAdapter):
                         "owner_team": "Product Team",
                         "criticality": "high",
                         "data_classification": "confidential",
-                        "public_facing": True
+                        "public_facing": True,
                     }
                     enrichment_data["assets_found"] += 1
 
@@ -93,7 +94,7 @@ class CMDBAdapter(BaseAdapter):
                     "soar_business_unit": soar_cmdb.get("soar_business_unit"),
                     "soar_department": soar_cmdb.get("soar_department"),
                     "soar_os": soar_cmdb.get("soar_os"),
-                    "soar_last_updated": soar_cmdb.get("soar_last_updated")
+                    "soar_last_updated": soar_cmdb.get("soar_last_updated"),
                 }
 
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
@@ -102,7 +103,7 @@ class CMDBAdapter(BaseAdapter):
                 adapter=self.name,
                 status=EnrichmentStatus.SUCCESS,
                 data=enrichment_data,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
             )
 
         except Exception as e:
@@ -111,7 +112,5 @@ class CMDBAdapter(BaseAdapter):
                 adapter=self.name,
                 status=EnrichmentStatus.FAILED,
                 error=str(e),
-                duration_ms=duration_ms
-            )
-            )
+                duration_ms=duration_ms,
             )
