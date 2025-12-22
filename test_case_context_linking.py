@@ -8,7 +8,6 @@ from soc_triage_bot.models.case_graph import NodeType, TriageMode
 from soc_triage_bot.models.signal import EntityBehaviorContext
 from soc_triage_bot.services.case_bootstrap import CaseBootstrapService
 from soc_triage_bot.services.case_context_linking import CaseContextLinkingService
-from soc_triage_bot.services.similarity import SimilarityService
 
 
 async def test_case_context_linking():
@@ -61,8 +60,7 @@ async def test_case_context_linking():
     ]
 
     # Initialize services
-    similarity_service = SimilarityService(case_database=mock_cases)
-    linking_service = CaseContextLinkingService(similarity_service=similarity_service)
+    linking_service = CaseContextLinkingService(case_database=mock_cases)
 
     # Link cases
     links_added = await linking_service.link_cases(signal, graph)
@@ -136,8 +134,7 @@ async def test_conditional_linking():
     graph.add_node(obs_node)
 
     # Initialize linking service
-    similarity_service = SimilarityService(case_database=[])
-    linking_service = CaseContextLinkingService(similarity_service=similarity_service)
+    linking_service = CaseContextLinkingService(case_database=[])
 
     # Should NOT run linking (detection present = no hunting needed)
     links_added = await linking_service.link_cases(signal, graph)

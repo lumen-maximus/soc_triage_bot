@@ -33,7 +33,6 @@ from .fetch_planner import FetchPlanner
 from .forecasting import ForecastingService, MultiTrackHistoricalData
 from .governance_gate import GovernanceGate
 from .report import ReportService
-from .similarity import SimilarityService
 
 if TYPE_CHECKING:
     from .ai import AIService
@@ -104,7 +103,6 @@ class TriageService:
         self,
         enrichment_service: EnrichmentService,
         forecasting_service: Optional[ForecastingService] = None,
-        similarity_service: Optional[SimilarityService] = None,
         classification_service: Optional[ClassificationService] = None,
         action_proposal_service: Optional[ActionProposalService] = None,
         report_service: Optional[ReportService] = None,
@@ -123,7 +121,6 @@ class TriageService:
         Args:
             enrichment_service: Service for signal enrichment
             forecasting_service: Service for ETS forecasting (optional)
-            similarity_service: Service for similar case retrieval (optional)
             classification_service: Service for classification (optional)
             action_proposal_service: Service for action proposals (optional)
             report_service: Service for report generation (optional)
@@ -138,7 +135,6 @@ class TriageService:
         """
         self.enrichment_service = enrichment_service
         self.forecasting_service = forecasting_service or ForecastingService()
-        self.similarity_service = similarity_service or SimilarityService()
         self.classification_service = classification_service or ClassificationService()
         self.action_proposal_service = (
             action_proposal_service or ActionProposalService()
@@ -234,7 +230,7 @@ class TriageService:
         # Step 3: Similar case retrieval (entity-based)
         # NOTE: SimilarCase models include runbook_refs, attachments_metadata
         # from SOAR. This is the SINGLE source - no re-fetching later.
-        similar_cases_models = self.similarity_service.find_similar_as_models(signal)
+        similar_cases_models = self.case_context_linking.find_similar_as_models(signal)
 
         # Augment with SOAR-linked cases if available
         similar_cases_models = self._augment_similar_cases_with_soar(

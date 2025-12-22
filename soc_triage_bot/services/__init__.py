@@ -13,7 +13,6 @@ from .governance_gate import GovernanceGate
 from .historical_data import HistoricalDataService
 from .report import ReportService
 from .signal_router import SignalRouter
-from .similarity import SimilarityService
 from .triage import TriageService
 
 __all__ = [
@@ -30,6 +29,5 @@ __all__ = [
     "HistoricalDataService",
     "ReportService",
     "SignalRouter",
-    "SimilarityService",
     "TriageService",
 ]

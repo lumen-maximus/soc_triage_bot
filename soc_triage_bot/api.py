@@ -18,9 +18,9 @@ from .config.settings import get_settings
 from .models import Signal, SignalSource, SignalType
 from .services import (
     AIService,
+    CaseContextLinkingService,
     EnrichmentService,
     ForecastingService,
-    SimilarityService,
     TriageService,
 )
 from .services.forecasting import MultiTrackHistoricalData
@@ -39,7 +39,7 @@ adapters = [
 
 enrichment_service = EnrichmentService(adapters)
 forecasting_service = ForecastingService()
-similarity_service = SimilarityService()
+case_context_linking = CaseContextLinkingService()
 
 # Initialize AI service based on settings
 ai_service = AIService.from_settings(settings.ai) if settings.ai.enabled else None
@@ -47,7 +47,7 @@ ai_service = AIService.from_settings(settings.ai) if settings.ai.enabled else No
 triage_service = TriageService(
     enrichment_service=enrichment_service,
     forecasting_service=forecasting_service,
-    similarity_service=similarity_service,
+    case_context_linking=case_context_linking,
     ai_service=ai_service,
 )
 

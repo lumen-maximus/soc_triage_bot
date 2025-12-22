@@ -8,10 +8,10 @@ from soc_triage_bot.adapters import EDRAdapter, SIEMAdapter
 from soc_triage_bot.models import Signal, SignalSource, SignalType
 from soc_triage_bot.services import (
     ActionProposalService,
+    CaseContextLinkingService,
     ClassificationService,
     EnrichmentService,
     ForecastingService,
-    SimilarityService,
     TriageService,
 )
 
@@ -131,7 +131,7 @@ def test_similarity_service(sample_signal):
         }
     ]
 
-    service = SimilarityService(case_database=case_db)
+    service = CaseContextLinkingService(case_database=case_db)
     similar_cases = service.find_similar_as_models(sample_signal, top_k=1)
 
     assert len(similar_cases) <= 1
@@ -362,7 +362,7 @@ def test_similarity_service_extended_matching(sample_signal):
         },
     ]
 
-    service = SimilarityService(case_database=case_db)
+    service = CaseContextLinkingService(case_database=case_db)
 
     # Test find_similar_extended
     similar_extended = service.find_similar_extended(sample_signal, top_k=2)
@@ -554,7 +554,7 @@ def test_similarity_service_with_soar_artifacts(sample_signal):
         }
     ]
 
-    service = SimilarityService(case_database=case_db)
+    service = CaseContextLinkingService(case_database=case_db)
     similar_cases = service.find_similar_as_models(sample_signal, top_k=1)
 
     if len(similar_cases) > 0:
