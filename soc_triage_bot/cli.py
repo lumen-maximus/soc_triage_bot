@@ -11,20 +11,10 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import click
 
-from .adapters import (
-    CMDBAdapter,
-    EDRAdapter,
-    HistoricalQueryCapable,
-    MockHistoricalAdapter,
-    SIEMAdapter,
-    ThreatIntelAdapter,
-    VulnerabilityAdapter,
-)
-from .config.settings import get_settings
 from .container import ServiceContainer
 from .models import Signal, SignalSource, SignalType
 from .models.signal import (
@@ -33,8 +23,8 @@ from .models.signal import (
     EntityBehaviorContext,
     VulnerabilityContext,
 )
-from .services import AIService, TriageService
 from .services.forecasting import MultiTrackHistoricalData
+from .services.signal_router import SignalRouter
 
 # =============================================================================
 # BANNER & UI/UX UTILITIES
@@ -362,6 +352,13 @@ def triage(
     input_source = ""
     signal_router = SignalRouter()
 
+    # Create container early if we need adapters for signal creation
+    container = None
+    if soar_id or siem_alert_id:
+        from .container import ServiceContainer
+
+        container = ServiceContainer(demo_mode=demo)
+
     show_section("Input Processing")
 
     if demo:
@@ -386,8 +383,8 @@ def triage(
         )
     elif soar_id:
         # Fetch SOAR case by ID (uses SOARAdapter)
-        show_info(f"Fetching SOAR case from platform...")
-        signal = create_signal_from_soar_id(soar_id)
+        show_info("Fetching SOAR case from platform...")
+        signal = create_signal_from_soar_id(soar_id, container)
         input_source = f"SOAR ID: {soar_id}"
         if signal.tags and "fetch-failed" in signal.tags:
             show_warning(
@@ -399,13 +396,13 @@ def triage(
         # Load SIEM alert JSON
         with open(siem_alert) as f:
             alert_data = json.load(f)
-        signal = parse_signal_from_json(alert_data)
+        signal = signal_router.parse_signal_from_json(alert_data)
         input_source = f"SIEM alert: {Path(siem_alert).name}"
         show_info(f"Loaded SIEM alert from {c(Path(siem_alert).name, Colors.CYAN)}")
     elif siem_alert_id:
         # Fetch SIEM alert by ID (uses SIEMAdapter)
-        show_info(f"Fetching SIEM alert from platform...")
-        signal = create_signal_from_siem_alert_id(siem_alert_id)
+        show_info("Fetching SIEM alert from platform...")
+        signal = create_signal_from_siem_alert_id(siem_alert_id, container)
         input_source = f"SIEM alert ID: {siem_alert_id}"
         if signal.tags and "fetch-failed" in signal.tags:
             show_warning(
@@ -426,7 +423,7 @@ def triage(
             )
         else:
             # Fall back to standard signal parsing
-            signal = parse_signal_from_json(signal_data)
+            signal = signal_router.parse_signal_from_json(signal_data)
             input_source = f"file: {Path(signal_file).name}"
             show_info(f"Loaded signal from {c(Path(signal_file).name, Colors.CYAN)}")
     elif ioc:
@@ -466,7 +463,7 @@ def triage(
         )
 
     # Step 1: Normalize signal
-    signal = normalize_signal_cli(signal)
+    signal = signal_router.route(signal)
 
     # Configure forecast option
     forecast_enabled = forecast == "on"
@@ -653,7 +650,8 @@ def validate(signal_file: str):
         with open(signal_file) as f:
             signal_data = json.load(f)
 
-        signal = parse_signal_from_json(signal_data)
+        signal_router = SignalRouter()
+        signal = signal_router.parse_signal_from_json(signal_data)
 
         show_divider()
         show_success("Signal is valid!")
@@ -811,20 +809,29 @@ def create_signal_from_ioc(ioc_string: str) -> Signal:
     )
 
 
-def create_signal_from_soar_id(soar_id: str) -> Signal:
+def create_signal_from_soar_id(
+    soar_id: str, container: Optional["ServiceContainer"] = None
+) -> Signal:
     """Fetch a signal from SOAR case ID using SOARAdapter.
 
     Args:
         soar_id: SOAR case/container ID
+        container: ServiceContainer instance (creates new if None)
 
     Returns:
         Signal with full SOAR case data
     """
-    from .adapters.soar import SOARAdapter  # type: ignore
+    from .container import ServiceContainer
 
-    # Create adapter and fetch case
-    soar_adapter = SOARAdapter()
-    signal = asyncio.run(soar_adapter.fetch_case_by_id(soar_id))
+    # Use container to get adapter
+    if container is None:
+        container = ServiceContainer()
+
+    if not container.soar_adapter:
+        # Fallback if SOAR adapter not configured
+        signal = None
+    else:
+        signal = asyncio.run(container.soar_adapter.fetch_case_by_id(soar_id))  # type: ignore[attr-defined]
 
     if not signal:
         # Fallback: create minimal signal if fetch fails
@@ -849,20 +856,24 @@ def create_signal_from_soar_id(soar_id: str) -> Signal:
     return signal
 
 
-def create_signal_from_siem_alert_id(alert_id: str) -> Signal:
+def create_signal_from_siem_alert_id(
+    alert_id: str, container: Optional["ServiceContainer"] = None
+) -> Signal:
     """Fetch a signal from SIEM alert ID using SIEMAdapter.
 
-      Args:
-          alert_id: SIEM alert/notable event ID
-    # type: ignore
-      Returns:
-          Signal with full SIEM alert data
-    """
-    from .adapters.siem import SIEMAdapter
+    Args:
+        alert_id: SIEM alert/notable event ID
+        container: ServiceContainer instance (creates new if None)
 
-    # Create adapter and fetch alert
-    siem_adapter = SIEMAdapter()
-    signal = asyncio.run(siem_adapter.fetch_alert_by_id(alert_id))
+    Returns:
+        Signal with full SIEM alert data
+    """
+    from .container import ServiceContainer
+
+    # Use container to get adapter
+    if container is None:
+        container = ServiceContainer()
+    signal = asyncio.run(container.siem_adapter.fetch_alert_by_id(alert_id))
 
     if not signal:
         # Fallback: create minimal signal if fetch fails
@@ -909,9 +920,9 @@ def create_signal_from_cve(cve_id: str) -> Signal:
         title=f"Vulnerability Report: {cve_id}",
         description=f"Vulnerability lookup for {cve_id}",
         severity="high",  # Default high for vulnerabilities
-        vuln_context=VulnerabilityContext(cve_id=cve_id),
+        vuln_context=VulnerabilityContext(cve=cve_id),
         tags=["vulnerability", "cve"],
-        raw_data={"cve_id": cve_id},
+        raw_data={"cve": cve_id},
     )
 
 
@@ -969,44 +980,8 @@ def create_signal_from_user_report(report_file: str) -> Signal:
 
 
 # =============================================================================
-# NORMALIZATION
+# OUTPUT FORMATTING
 # =============================================================================
-
-
-def normalize_signal_cli(signal: Signal) -> Signal:
-    """Normalize a signal for CLI processing - delegated to SignalRouter.
-
-    DEPRECATED: Use SignalRouter directly. This wrapper exists for backward compatibility.
-    """
-    router = SignalRouter()
-    return router.route(signal)
-
-
-def _determine_signal_subtype(signal: Signal) -> str:
-    """DEPRECATED: Moved to SignalRouter._determine_signal_subtype."""
-    router = SignalRouter()
-    return router._determine_signal_subtype(signal)
-
-
-def _select_entity_focus(signal: Signal, entities: Dict[str, Any]) -> str:
-    """DEPRECATED: Moved to SignalRouter._select_entity_focus."""
-    router = SignalRouter()
-    return router._select_entity_focus(signal, entities)
-
-
-def detect_and_parse_soar_container(data: dict) -> Optional[Signal]:
-    """DEPRECATED: Moved to SignalRouter.detect_and_parse_soar_container."""
-    router = SignalRouter()
-    return router.detect_and_parse_soar_container(data)
-
-
-def parse_signal_from_json(data: dict) -> Signal:
-    """Parse a signal from JSON data - delegated to SignalRouter.
-
-    DEPRECATED: Use SignalRouter directly. This wrapper exists for backward compatibility.
-    """
-    router = SignalRouter()
-    return router.parse_signal_from_json(data)
 
 
 def format_result_as_json(result):

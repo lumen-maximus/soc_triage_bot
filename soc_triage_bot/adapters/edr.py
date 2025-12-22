@@ -1,7 +1,7 @@
 """EDR adapter for enrichment."""
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..models import EnrichmentResult, EnrichmentStatus, Signal
 from .base import BaseAdapter
@@ -9,6 +9,39 @@ from .base import BaseAdapter
 
 class EDRAdapter(BaseAdapter):
     """Generic EDR adapter for endpoint context."""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize EDR adapter with configuration.
+        
+        Args:
+            config: Configuration dict with keys:
+                - enabled: bool
+                - provider: str (mock, crowdstrike, carbonblack, etc.)
+                - api_url: str
+                - client_id: str
+                - client_secret: str
+                - api_key: str
+                - timeout: int
+                - verify_ssl: bool
+                - tenant_id: str
+                - max_hosts: int
+                - lookback_hours: int
+        """
+        super().__init__(config)
+        self.name = "edr"
+        
+        # Store commonly used config values
+        self.enabled = self.config.get("enabled", False)
+        self.provider = self.config.get("provider", "mock")
+        self.api_url = self.config.get("api_url")
+        self.client_id = self.config.get("client_id")
+        self.client_secret = self.config.get("client_secret")
+        self.api_key = self.config.get("api_key")
+        self.timeout = self.config.get("timeout", 30)
+        self.verify_ssl = self.config.get("verify_ssl", True)
+        self.tenant_id = self.config.get("tenant_id")
+        self.max_hosts = self.config.get("max_hosts", 100)
+        self.lookback_hours = self.config.get("lookback_hours", 24)
 
     async def enrich(self, signal: Signal) -> EnrichmentResult:
         """Enrich signal with EDR data.

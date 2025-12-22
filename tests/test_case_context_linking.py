@@ -62,8 +62,9 @@ async def test_case_context_linking():
     # Initialize services
     linking_service = CaseContextLinkingService(case_database=mock_cases)
 
-    # Link cases
-    links_added = await linking_service.link_cases(signal, graph)
+    # Link cases using retrieve_rank_hydrate
+    result = await linking_service.retrieve_rank_hydrate(signal, graph)
+    links_added = result.links_added_to_graph
 
     # Verify links added to graph
     assert links_added > 0
@@ -137,7 +138,8 @@ async def test_conditional_linking():
     linking_service = CaseContextLinkingService(case_database=[])
 
     # Should NOT run linking (detection present = no hunting needed)
-    links_added = await linking_service.link_cases(signal, graph)
+    result = await linking_service.retrieve_rank_hydrate(signal, graph)
+    links_added = result.links_added_to_graph
 
     assert links_added == 0
     print("✓ Conditional linking skipped for IOC with detection present")

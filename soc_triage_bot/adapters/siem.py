@@ -19,6 +19,39 @@ class SIEMAdapter(BaseAdapter):
     # Default late arrival window for backfill (spec Section 2)
     LATE_ARRIVAL_WINDOW_MINUTES = 120
 
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize SIEM adapter with configuration.
+        
+        Args:
+            config: Configuration dict with keys:
+                - enabled: bool
+                - provider: str (mock, splunk, qradar, etc.)
+                - api_url: str
+                - api_key: str
+                - username: str
+                - password: str
+                - timeout: int
+                - verify_ssl: bool
+                - default_index: str
+                - max_results: int
+                - search_timeout: int
+        """
+        super().__init__(config)
+        self.name = "siem"
+        
+        # Store commonly used config values as properties for easy access
+        self.enabled = self.config.get("enabled", False)
+        self.provider = self.config.get("provider", "mock")
+        self.api_url = self.config.get("api_url")
+        self.api_key = self.config.get("api_key")
+        self.username = self.config.get("username")
+        self.password = self.config.get("password")
+        self.timeout = self.config.get("timeout", 30)
+        self.verify_ssl = self.config.get("verify_ssl", True)
+        self.default_index = self.config.get("default_index")
+        self.max_results = self.config.get("max_results", 1000)
+        self.search_timeout = self.config.get("search_timeout", 60)
+
     async def enrich(self, signal: Signal) -> EnrichmentResult:
         """Enrich signal with SIEM data.
 

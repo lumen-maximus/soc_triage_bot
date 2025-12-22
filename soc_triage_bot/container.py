@@ -29,6 +29,7 @@ Usage:
     service = container.triage_service  # Uses mock
 """
 
+import os
 from typing import List, Optional
 
 from .adapters import (
@@ -55,7 +56,6 @@ from .services import (
 from .services.canonicalize import CanonicalizeService
 from .services.case_artifact_harvester import CaseArtifactHarvester
 from .services.case_bootstrap import CaseBootstrapService
-from .services.fetch_planner import FetchPlanner
 from .services.governance_gate import GovernanceGate
 from .services.historical_data import HistoricalDataService
 from .services.runbook_registry import RunbookRegistry
@@ -123,7 +123,6 @@ class ServiceContainer:
         self._case_bootstrap_service: Optional[CaseBootstrapService] = None
         self._canonicalize_service: Optional[CanonicalizeService] = None
         self._source_hydrator: Optional[SourceHydrator] = None
-        self._fetch_planner: Optional[FetchPlanner] = None
         self._governance_gate: Optional[GovernanceGate] = None
         self._runbook_registry: Optional[RunbookRegistry] = None
         self._case_context_linking: Optional[CaseContextLinkingService] = None
@@ -143,44 +142,131 @@ class ServiceContainer:
     def siem_adapter(self) -> SIEMAdapter:
         """Get or create SIEM adapter singleton."""
         if self._siem_adapter is None:
-            self._siem_adapter = SIEMAdapter()
+            settings = get_settings()
+            config = {
+                "enabled": settings.siem.enabled,
+                "provider": settings.siem.provider,
+                "api_url": settings.siem.api_url,
+                "api_key": os.getenv(settings.siem.api_key_env),
+                "username": os.getenv(settings.siem.username_env),
+                "password": os.getenv(settings.siem.password_env),
+                "timeout": settings.siem.timeout_seconds,
+                "verify_ssl": settings.siem.verify_ssl,
+                "default_index": settings.siem.default_index,
+                "max_results": settings.siem.max_results,
+                "search_timeout": settings.siem.search_timeout_seconds,
+            }
+            self._siem_adapter = SIEMAdapter(config)
         return self._siem_adapter
 
     @property
     def edr_adapter(self) -> EDRAdapter:
         """Get or create EDR adapter singleton."""
         if self._edr_adapter is None:
-            self._edr_adapter = EDRAdapter()
+            settings = get_settings()
+            config = {
+                "enabled": settings.edr.enabled,
+                "provider": settings.edr.provider,
+                "api_url": settings.edr.api_url,
+                "client_id": os.getenv(settings.edr.client_id_env),
+                "client_secret": os.getenv(settings.edr.client_secret_env),
+                "api_key": os.getenv(settings.edr.api_key_env),
+                "timeout": settings.edr.timeout_seconds,
+                "verify_ssl": settings.edr.verify_ssl,
+                "tenant_id": settings.edr.tenant_id,
+                "max_hosts": settings.edr.max_hosts,
+                "lookback_hours": settings.edr.lookback_hours,
+            }
+            self._edr_adapter = EDRAdapter(config)
         return self._edr_adapter
 
     @property
     def ti_adapter(self) -> ThreatIntelAdapter:
         """Get or create Threat Intel adapter singleton."""
         if self._ti_adapter is None:
-            self._ti_adapter = ThreatIntelAdapter()
+            settings = get_settings()
+            config = {
+                "enabled": settings.threat_intel.enabled,
+                "virustotal_enabled": settings.threat_intel.virustotal_enabled,
+                "virustotal_api_key": os.getenv(settings.threat_intel.virustotal_api_key_env),
+                "alienvault_enabled": settings.threat_intel.alienvault_enabled,
+                "alienvault_api_key": os.getenv(settings.threat_intel.alienvault_api_key_env),
+                "abuseipdb_enabled": settings.threat_intel.abuseipdb_enabled,
+                "abuseipdb_api_key": os.getenv(settings.threat_intel.abuseipdb_api_key_env),
+                "custom_feed_url": settings.threat_intel.custom_feed_url,
+                "custom_feed_api_key": os.getenv(settings.threat_intel.custom_feed_api_key_env),
+                "timeout": settings.threat_intel.timeout_seconds,
+                "cache_ttl_hours": settings.threat_intel.cache_ttl_hours,
+                "max_indicators": settings.threat_intel.max_indicators_per_query,
+            }
+            self._ti_adapter = ThreatIntelAdapter(config)
         return self._ti_adapter
 
     @property
     def vuln_adapter(self) -> VulnerabilityAdapter:
         """Get or create Vulnerability adapter singleton."""
         if self._vuln_adapter is None:
-            self._vuln_adapter = VulnerabilityAdapter()
+            settings = get_settings()
+            config = {
+                "enabled": settings.vulnerability.enabled,
+                "provider": settings.vulnerability.provider,
+                "nvd_api_key": os.getenv(settings.vulnerability.nvd_api_key_env),
+                "nvd_enabled": settings.vulnerability.nvd_enabled,
+                "tenable_access_key": os.getenv(settings.vulnerability.tenable_access_key_env),
+                "tenable_secret_key": os.getenv(settings.vulnerability.tenable_secret_key_env),
+                "tenable_enabled": settings.vulnerability.tenable_enabled,
+                "api_url": settings.vulnerability.api_url,
+                "timeout": settings.vulnerability.timeout_seconds,
+                "cache_ttl_hours": settings.vulnerability.cache_ttl_hours,
+            }
+            self._vuln_adapter = VulnerabilityAdapter(config)
         return self._vuln_adapter
 
     @property
     def cmdb_adapter(self) -> CMDBAdapter:
         """Get or create CMDB adapter singleton."""
         if self._cmdb_adapter is None:
-            self._cmdb_adapter = CMDBAdapter()
+            settings = get_settings()
+            config = {
+                "enabled": settings.cmdb.enabled,
+                "provider": settings.cmdb.provider,
+                "api_url": settings.cmdb.api_url,
+                "username": os.getenv(settings.cmdb.username_env),
+                "password": os.getenv(settings.cmdb.password_env),
+                "api_key": os.getenv(settings.cmdb.api_key_env),
+                "timeout": settings.cmdb.timeout_seconds,
+                "verify_ssl": settings.cmdb.verify_ssl,
+                "asset_table": settings.cmdb.asset_table,
+                "max_results": settings.cmdb.max_results,
+            }
+            self._cmdb_adapter = CMDBAdapter(config)
         return self._cmdb_adapter
 
     @property
     def soar_adapter(self) -> Optional[BaseAdapter]:
         """Get or create SOAR adapter singleton (if configured)."""
         if self._soar_adapter is None:
-            # TODO: Implement SOARAdapter when available
-            # self._soar_adapter = SOARAdapter()
-            pass
+            settings = get_settings()
+            if settings.soar.enabled:
+                from .adapters.soar import SOARAdapter
+                config = {
+                    "enabled": settings.soar.enabled,
+                    "provider": settings.soar.provider,
+                    "api_url": settings.soar.api_url,
+                    "api_token": os.getenv(settings.soar.api_token_env),
+                    "username": os.getenv(settings.soar.username_env),
+                    "password": os.getenv(settings.soar.password_env),
+                    "timeout": settings.soar.timeout_seconds,
+                    "verify_ssl": settings.soar.verify_ssl,
+                    "container_prefix": settings.soar.container_prefix,
+                    "auto_create_cases": settings.soar.auto_create_cases,
+                }
+                # Pass api_url and api_token directly for backward compatibility
+                self._soar_adapter = SOARAdapter(
+                    api_url=settings.soar.api_url,
+                    api_token=os.getenv(settings.soar.api_token_env)
+                )
+                self._soar_adapter.config = config
         return self._soar_adapter
 
     @property
@@ -306,13 +392,6 @@ class ServiceContainer:
         return self._source_hydrator
 
     @property
-    def fetch_planner(self) -> FetchPlanner:
-        """Get or create fetch planner singleton."""
-        if self._fetch_planner is None:
-            self._fetch_planner = FetchPlanner()
-        return self._fetch_planner
-
-    @property
     def governance_gate(self) -> GovernanceGate:
         """Get or create governance gate singleton."""
         if self._governance_gate is None:
@@ -376,7 +455,6 @@ class ServiceContainer:
                 case_bootstrap_service=self.case_bootstrap_service,
                 canonicalize_service=self.canonicalize_service,
                 source_hydrator=self.source_hydrator,
-                fetch_planner=self.fetch_planner,
                 governance_gate=self.governance_gate,
                 runbook_registry=self.runbook_registry,
                 case_context_linking=self.case_context_linking,

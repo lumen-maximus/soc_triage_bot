@@ -119,7 +119,7 @@ def test_forecasting_service():
 
 
 def test_similarity_service(sample_signal):
-    """Test similar case retrieval using find_similar_as_models."""
+    """Test similar case retrieval using retrieve_rank_hydrate."""
     case_db = [
         {
             "case_id": "case-001",
@@ -132,7 +132,11 @@ def test_similarity_service(sample_signal):
     ]
 
     service = CaseContextLinkingService(case_database=case_db)
-    similar_cases = service.find_similar_as_models(sample_signal, top_k=1)
+    # Use async function properly
+    import asyncio
+
+    result = asyncio.run(service.retrieve_rank_hydrate(sample_signal, graph=None))
+    similar_cases = result.similar_cases
 
     assert len(similar_cases) <= 1
 
@@ -364,8 +368,8 @@ def test_similarity_service_extended_matching(sample_signal):
 
     service = CaseContextLinkingService(case_database=case_db)
 
-    # Test find_similar_extended
-    similar_extended = service.find_similar_extended(sample_signal, top_k=2)
+    # Test _find_similar_extended (internal method for TF-IDF + entity matching)
+    similar_extended = service._find_similar_extended(sample_signal, top_k=2)
 
     assert len(similar_extended) <= 2
     # Should rank the matching IP case higher
@@ -555,7 +559,10 @@ def test_similarity_service_with_soar_artifacts(sample_signal):
     ]
 
     service = CaseContextLinkingService(case_database=case_db)
-    similar_cases = service.find_similar_as_models(sample_signal, top_k=1)
+    import asyncio
+
+    result = asyncio.run(service.retrieve_rank_hydrate(sample_signal, graph=None))
+    similar_cases = result.similar_cases
 
     if len(similar_cases) > 0:
         case = similar_cases[0]

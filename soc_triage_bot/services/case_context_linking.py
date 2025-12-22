@@ -488,69 +488,6 @@ class CaseContextLinkingService:
 
         return filtered
 
-    async def link_cases(
-        self,
-        signal: Signal,
-        graph: TriageContextGraph,
-    ) -> int:
-        """Backward-compatible: Link similar cases to graph.
-
-        Args:
-            signal: Signal to find cases for
-            graph: Case knowledge graph to update
-
-        Returns:
-            Number of case links added
-        """
-        result = await self.retrieve_rank_hydrate(signal, graph)
-        return result.links_added_to_graph
-
-    def find_similar_as_models(
-        self,
-        signal: Signal,
-        top_k: int = 5,
-    ) -> List[SimilarCase]:
-        """Backward-compatible: Find similar cases as SimilarCase models.
-
-        Args:
-            signal: Signal to find similar cases for
-            top_k: Number of top similar cases to return
-
-        Returns:
-            List of SimilarCase Pydantic models
-        """
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        if loop.is_running():
-            # In running loop, use sync version
-            candidates = self._find_similar_extended(signal, top_k=top_k)
-            return self._candidates_to_models(candidates)
-
-        result = loop.run_until_complete(self.retrieve_rank_hydrate(signal, graph=None))
-        return result.similar_cases[:top_k]
-
-    def find_similar_extended(
-        self,
-        signal: Signal,
-        top_k: int = 5,
-    ) -> List[SimilarityResult]:
-        """Backward-compatible: Find similar cases with entity matching.
-
-        Args:
-            signal: Signal to find similar cases for
-            top_k: Number of top similar cases to return
-
-        Returns:
-            List of SimilarityResult with entity matching details
-        """
-        return self._find_similar_extended(signal, top_k=top_k)
-
     # =========================================================================
     # STAGE 1: Index queries (TF-IDF + entity matching)
     # =========================================================================
@@ -677,22 +614,22 @@ class CaseContextLinkingService:
             if signal.detection_context.detection_name:
                 entities["rule_id"].add(signal.detection_context.detection_name)
 
-        # Rule ID from source (legacy)
+        # Rule ID from source
         if signal.source.rule_id:
             entities["rule_id"].add(signal.source.rule_id)
 
-        # Indicators from artifact context
+        # Indicators from artifact context (preferred)
         if signal.artifact_context:
             for attr in ["sha256", "md5", "domain", "ip", "url", "process_name"]:
                 val = getattr(signal.artifact_context, attr, None)
                 if val:
                     entities["indicator"].add(val)
 
-        # Indicators from legacy field
+        # Indicators from flat dict field (fallback)
         for ioc_type, ioc_val in signal.indicators.items():
             entities["indicator"].add(ioc_val)
 
-        # Entities from entity context
+        # Entities from entity context (preferred)
         if signal.entity_context:
             if signal.entity_context.hostname:
                 entities["hostname"].add(signal.entity_context.hostname)
@@ -701,7 +638,7 @@ class CaseContextLinkingService:
             if signal.entity_context.src_ip:
                 entities["ip"].add(signal.entity_context.src_ip)
 
-        # Entities from legacy field
+        # Entities from flat dict field (fallback)
         for entity_type, entity_values in signal.entities.items():
             if entity_type in entities:
                 entities[entity_type].update(entity_values)
@@ -1170,11 +1107,3 @@ class CaseContextLinkingService:
         """Add a new case to the database and rebuild index."""
         self.case_database.append(case)
         self._build_index()
-
-
-# =============================================================================
-# BACKWARD COMPATIBILITY: Aliases
-# =============================================================================
-
-# For imports that still reference SimilarityService
-SimilarityService = CaseContextLinkingService

@@ -2,6 +2,11 @@
 
 Orchestrates multi-track ETS forecasting and assembles TriageReport.
 Integrates Case Knowledge Graph (CKG) for evidence tracking and governance.
+
+Enrichment delta optimization handled at adapter level via:
+- SOAR baseline extraction (CaseArtifactHarvester)
+- Entity-based filtering (adapters check signal.entities)
+- Signal-type awareness (CVE signals trigger different enrichment)
 """
 
 from datetime import datetime, timezone
@@ -29,7 +34,6 @@ from .case_bootstrap import CaseBootstrapService
 from .case_context_linking import CaseContextLinkingService
 from .classification import ClassificationService
 from .enrichment import EnrichmentService
-from .fetch_planner import FetchPlanner
 from .forecasting import ForecastingService, MultiTrackHistoricalData
 from .governance_gate import GovernanceGate
 from .report import ReportService
@@ -96,7 +100,7 @@ class TriageService:
     Case Knowledge Graph (CKG) integration:
     - Uses CaseBootstrapService to initialize graph
     - Uses CanonicalizeService to normalize entities
-    - Uses FetchPlanner for delta-only enrichments
+    - Enrichment delta optimization via adapter-level logic
     - Uses GovernanceGate to filter/approve actions
     - Uses CaseContextLinking to link similar cases in graph
     - Detection presence handled by SIEM/EDR adapters in enrichment
@@ -112,7 +116,6 @@ class TriageService:
         case_bootstrap_service: CaseBootstrapService,
         canonicalize_service: CanonicalizeService,
         source_hydrator: SourceHydrator,
-        fetch_planner: FetchPlanner,
         governance_gate: GovernanceGate,
         runbook_registry: RunbookRegistry,
         case_context_linking: CaseContextLinkingService,
@@ -134,7 +137,6 @@ class TriageService:
             case_bootstrap_service: CKG bootstrap service (REQUIRED)
             canonicalize_service: CKG entity canonicalization service (REQUIRED)
             source_hydrator: Source payload hydrator (REQUIRED)
-            fetch_planner: CKG fetch planner for delta-only enrichment (REQUIRED)
             governance_gate: CKG governance gate for action filtering (REQUIRED)
             runbook_registry: Runbook/playbook registry for governed templates (REQUIRED)
             case_context_linking: CKG case linking service (REQUIRED)
@@ -155,7 +157,6 @@ class TriageService:
         self.case_bootstrap_service = case_bootstrap_service
         self.canonicalize_service = canonicalize_service
         self.source_hydrator = source_hydrator
-        self.fetch_planner = fetch_planner
         self.governance_gate = governance_gate
         self.runbook_registry = runbook_registry
         self.case_context_linking = case_context_linking
@@ -214,10 +215,12 @@ class TriageService:
             pass
 
         # =====================================================================
-        # CKG PHASE 3: Fetch Planning (determine what to enrich)
+        # CKG PHASE 3: Enrichment (all adapters with delta optimization)
         # =====================================================================
-        # Note: FetchPlanner.plan() could be used to filter adapters in future
-        # For now, we run all enrichments
+        # Adapters internally handle delta optimization via:
+        # - SOAR baseline extraction (CaseArtifactHarvester)
+        # - Entity-based filtering (only enrich entities present in signal)
+        # - Signal-type awareness (CVE signals trigger different enrichment)
 
         # Step 1: Concurrent enrichments (with evidence IDs + CKG graph writing)
         if self.enable_ckg and graph:
@@ -257,22 +260,23 @@ class TriageService:
                     signal, historical_data
                 )
 
-        # Step 3: Similar case retrieval (entity-based)
-        # NOTE: SimilarCase models include runbook_refs, attachments_metadata
-        # from SOAR. This is the SINGLE source - no re-fetching later.
-        similar_cases_models = self.case_context_linking.find_similar_as_models(signal)
+        # Step 3: Similar case retrieval with graph integration
+        # NOTE: retrieve_rank_hydrate() handles:
+        # - TF-IDF + entity matching on local database
+        # - Live SOAR query for related cases
+        # - Graph-aware filtering and ranking
+        # - Deep hydration of top-K cases only
+        # - Graph writes (similar case nodes + edges)
+        # - Artifact harvesting (runbook refs, action templates)
+        linking_result = await self.case_context_linking.retrieve_rank_hydrate(
+            signal, graph
+        )
+        similar_cases_models = linking_result.similar_cases
 
         # Augment with SOAR-linked cases if available
         similar_cases_models = self._augment_similar_cases_with_soar(
             signal, similar_cases_models
         )
-
-        # =====================================================================
-        # CKG PHASE 4: Case Context Linking (add similar cases to graph)
-        # =====================================================================
-        if self.enable_ckg and graph and similar_cases_models:
-            # link_cases takes (signal, graph) and returns num links added
-            await self.case_context_linking.link_cases(signal, graph)
 
         similar_cases_tuples = [
             (c.case_id, c.similarity, c.outcome) for c in similar_cases_models

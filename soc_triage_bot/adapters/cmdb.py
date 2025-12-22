@@ -1,7 +1,7 @@
 """CMDB adapter for enrichment."""
 
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..models import EnrichmentResult, EnrichmentStatus, Signal
 from .base import BaseAdapter
@@ -9,6 +9,37 @@ from .base import BaseAdapter
 
 class CMDBAdapter(BaseAdapter):
     """Configuration Management Database adapter."""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize CMDB adapter with configuration.
+        
+        Args:
+            config: Configuration dict with keys:
+                - enabled: bool
+                - provider: str (mock, servicenow, device42, etc.)
+                - api_url: str
+                - username: str
+                - password: str
+                - api_key: str
+                - timeout: int
+                - verify_ssl: bool
+                - asset_table: str
+                - max_results: int
+        """
+        super().__init__(config)
+        self.name = "cmdb"
+        
+        # Store commonly used config values
+        self.enabled = self.config.get("enabled", False)
+        self.provider = self.config.get("provider", "mock")
+        self.api_url = self.config.get("api_url")
+        self.username = self.config.get("username")
+        self.password = self.config.get("password")
+        self.api_key = self.config.get("api_key")
+        self.timeout = self.config.get("timeout", 30)
+        self.verify_ssl = self.config.get("verify_ssl", True)
+        self.asset_table = self.config.get("asset_table", "cmdb_ci")
+        self.max_results = self.config.get("max_results", 100)
 
     async def enrich(self, signal: Signal) -> EnrichmentResult:
         """Enrich signal with CMDB/asset data.

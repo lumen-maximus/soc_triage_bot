@@ -34,12 +34,7 @@ from .case_graph import (
     TriageContextGraph,
     TriageMode,
 )
-from .enrichment import (
-    EnrichmentResult,
-    EnrichmentStatus,
-    ExtractedEntity,
-    ExtractedIndicator,
-)
+from .enrichment import EnrichmentResult, EnrichmentStatus
 from .signal import (
     ArtifactContext,
     DetectionContext,
@@ -123,8 +118,6 @@ __all__ = [
     # Enrichment
     "EnrichmentResult",
     "EnrichmentStatus",
-    "ExtractedEntity",
-    "ExtractedIndicator",
     # Classification
     "ClassificationLabel",
     # Action

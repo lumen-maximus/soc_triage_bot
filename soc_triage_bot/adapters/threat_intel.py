@@ -11,9 +11,39 @@ class ThreatIntelAdapter(BaseAdapter):
     """Generic Threat Intelligence adapter."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the adapter."""
+        """Initialize the adapter with configuration.
+        
+        Args:
+            config: Configuration dict with keys:
+                - enabled: bool
+                - virustotal_enabled: bool
+                - virustotal_api_key: str
+                - alienvault_enabled: bool
+                - alienvault_api_key: str
+                - abuseipdb_enabled: bool
+                - abuseipdb_api_key: str
+                - custom_feed_url: str
+                - custom_feed_api_key: str
+                - timeout: int
+                - cache_ttl_hours: int
+                - max_indicators: int
+        """
         super().__init__(config)
         self.name = "threat_intel"  # Override to use underscore
+        
+        # Store commonly used config values
+        self.enabled = self.config.get("enabled", False)
+        self.virustotal_enabled = self.config.get("virustotal_enabled", False)
+        self.virustotal_api_key = self.config.get("virustotal_api_key")
+        self.alienvault_enabled = self.config.get("alienvault_enabled", False)
+        self.alienvault_api_key = self.config.get("alienvault_api_key")
+        self.abuseipdb_enabled = self.config.get("abuseipdb_enabled", False)
+        self.abuseipdb_api_key = self.config.get("abuseipdb_api_key")
+        self.custom_feed_url = self.config.get("custom_feed_url")
+        self.custom_feed_api_key = self.config.get("custom_feed_api_key")
+        self.timeout = self.config.get("timeout", 30)
+        self.cache_ttl_hours = self.config.get("cache_ttl_hours", 24)
+        self.max_indicators = self.config.get("max_indicators", 100)
 
     async def enrich(self, signal: Signal) -> EnrichmentResult:
         """Enrich signal with threat intelligence data.

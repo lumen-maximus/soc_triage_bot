@@ -94,13 +94,6 @@ class GatingResult:
     missing_data: List[str] = field(default_factory=list)
 
 
-# Default limits - DEPRECATED: Use ActionProposalSettings from config instead
-# These remain for backwards compatibility when settings not provided
-_DEFAULT_TOP_PROPOSALS_MIN = 3
-_DEFAULT_TOP_PROPOSALS_MAX = 6
-_DEFAULT_FULL_PLAN_MAX = 15
-
-
 class ActionProposalService:
     """Enterprise service for action proposal generation and management.
 
@@ -139,14 +132,10 @@ class ActionProposalService:
         self.max_case_age_days = self.config.get("max_case_age_days", 90)
         self.require_successful_outcome = self.config.get("require_successful", True)
 
-        # Proposal limits - use config or defaults
-        self.top_proposals_min = self.config.get(
-            "top_proposals_min", _DEFAULT_TOP_PROPOSALS_MIN
-        )
-        self.top_proposals_max = self.config.get(
-            "top_proposals_max", _DEFAULT_TOP_PROPOSALS_MAX
-        )
-        self.full_plan_max = self.config.get("full_plan_max", _DEFAULT_FULL_PLAN_MAX)
+        # Proposal limits - use config with explicit defaults
+        self.top_proposals_min = self.config.get("top_proposals_min", 3)
+        self.top_proposals_max = self.config.get("top_proposals_max", 6)
+        self.full_plan_max = self.config.get("full_plan_max", 15)
 
         # Initialize RunbookRegistry (lazy import to avoid circular deps)
         self._runbook_registry = runbook_registry

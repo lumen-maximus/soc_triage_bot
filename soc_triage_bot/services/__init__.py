@@ -7,7 +7,6 @@ from .case_bootstrap import CaseBootstrapService
 from .case_context_linking import CaseContextLinkingService
 from .classification import ClassificationService
 from .enrichment import EnrichmentService
-from .fetch_planner import FetchPlanner
 from .forecasting import ForecastingService
 from .governance_gate import GovernanceGate
 from .historical_data import HistoricalDataService
@@ -25,7 +24,6 @@ __all__ = [
     "CaseContextLinkingService",
     "ClassificationService",
     "EnrichmentService",
-    "FetchPlanner",
     "ForecastingService",
     "GovernanceGate",
     "HistoricalDataService",

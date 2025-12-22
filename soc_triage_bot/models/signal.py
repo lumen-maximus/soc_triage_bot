@@ -136,9 +136,6 @@ class VulnerabilityContext(BaseModel):
     """Vulnerability-specific context for CVE/vuln signals."""
 
     cve: Optional[str] = Field(default=None, description="CVE identifier")
-    cve_id: Optional[str] = Field(
-        default=None, description="CVE identifier (alias for cve)"
-    )
     cvss_score: Optional[float] = Field(default=None, ge=0.0, le=10.0)
     cvss_vector: Optional[str] = Field(default=None)
     product: Optional[str] = Field(default=None, description="Affected product")
@@ -254,7 +251,7 @@ class Signal(BaseModel):
             if self.artifact_context.cmdline_hash:
                 result["cmdline_hash"] = self.artifact_context.cmdline_hash
             result.update(self.artifact_context.indicator_list)
-        # Fallback to legacy indicators
+        # Fallback to flat dict indicators if artifact_context not available
         if not result and self.indicators:
             result = dict(self.indicators)
         return result
@@ -280,7 +277,7 @@ class Signal(BaseModel):
                 return ("device_id", self.entity_context.device_id)
             if self.entity_context.src_ip:
                 return ("src_ip", self.entity_context.src_ip)
-        # Fallback to legacy entities
+        # Fallback to flat dict entities if entity_context not available
         if self.entities:
             for entity_type in ["hostname", "user", "device", "ip"]:
                 if entity_type in self.entities and self.entities[entity_type]:
