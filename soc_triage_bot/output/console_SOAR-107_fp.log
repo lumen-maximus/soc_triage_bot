@@ -1,0 +1,275 @@
+
+  ╭─────────────────────────────────────────────╮
+  │                                             │
+  │   ███████╗ ██████╗  ██████╗               │
+  │   ██╔════╝██╔═══██╗██╔════╝               │
+  │   ███████╗██║   ██║██║                    │
+  │   ╚════██║██║   ██║██║                    │
+  │   ███████║╚██████╔╝╚██████╗               │
+  │   ╚══════╝ ╚═════╝  ╚═════╝               │
+  │                                             │
+  │     A G E N T                           │
+  │                                             │
+  ╰─────────────────────────────────────────────╯
+
+    🛡️  Autonomous Security Operations Center
+    Version v1.0.0 | SIEM-Agnostic • Async • AI-Ready
+
+    ▸ Pipeline Demo - False Positive Report
+
+  ▸ Input: /mnt/c/Dev/soc_triage_bot/examples/soar_container.json
+  ▸ Report Type: FP
+──────────────────────────────────────────────────────────────────────
+
+Loading SOAR Container...
+  ✓ Loaded signal: SOAR-107
+  ✓ Signal subtype will be detected as: ioc (from tags)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SOC TRIAGE BOT - SERVICE INVENTORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│
+│ Adapters (Data Sources):
+│   • SIEMAdapter          - SIEM alert ingestion & correlation
+│   • ThreatIntelAdapter   - VirusTotal, OTX, AbuseIPDB
+│   • CMDBAdapter          - Asset context & ownership
+│   • EDRAdapter           - Endpoint telemetry
+│   • VulnerabilityAdapter - CVE/vulnerability data
+│
+│ Core Services:
+│   • CaseBootstrapService    - Graph + case ID initialization
+│   • CanonicalizeService     - Entity extraction and normalization
+│   • SourceHydratorService   - Signal hydration from SOAR/SIEM
+│   • EnrichmentService       - Multi-source enrichment
+│   • HistoricalDataService   - Time series fetch (MANDATORY)
+│   • ForecastingService      - Multi-track ETS analysis
+│   • CaseContextLinkingService - Similar case retrieval + harvest
+│   • ClassificationService   - TP/FP scoring engine
+│   • RunbookRegistry         - Match playbooks/runbooks
+│   • ActionProposalService   - Generate recommendations (6 channels)
+│   • GovernanceGate          - Action safety evaluation
+│   • AIService               - LLM overlay generation (OPTIONAL)
+│   • ReportService           - Jinja2 markdown render
+│
+└─ 13 services ready
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1: CASE BOOTSTRAP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: CaseBootstrapService
+│ Initializing case graph and generating deterministic case ID...
+│
+│ → CaseBootstrapService.bootstrap(signal, mode=MIN_DELTA)
+│   • Creates TriageContextGraph with CaseNode and SignalNode
+│   • _generate_case_id() → Deterministic hash from signal metadata
+│   • Establishes case-signal relationship in graph
+│
+└─ ✓ CaseBootstrapService.bootstrap() complete
+   Case ID: SOAR-107
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 1.5: ENTITY CANONICALIZATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+│ Service: CanonicalizeService
+│ Extracting and normalizing entities from signal...
+│
+│ → CanonicalizeService.canonicalize_entities(signal, graph)
+│   • _extract_entities_from_signal() → Parse hostname, user, IPs
+│   • _normalize_entity_value() → Lowercase, trim, dedupe
+│   • _write_entities_to_graph() → Create entity nodes
+│
+└─ ✓ CanonicalizeService.canonicalize_entities() complete
+   Extracted 6 canonical entities
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 2: SOURCE HYDRATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: SourceHydratorService
+  → hydrate_if_needed(signal)
+  → Signal has soar_id=107 - hydrating from SOAR
+  ✓ Signal hydrated with SOAR container data
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: ENRICHMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: EnrichmentService + 5 Adapters
+  → SIEMAdapter: SIEM correlation lookup
+  → EDRAdapter: Endpoint telemetry
+  → ThreatIntelAdapter: VirusTotal, OTX, AbuseIPDB
+  → CMDBAdapter: Asset context and ownership
+  → VulnerabilityAdapter: CVE/vulnerability data
+  → Baseline cache extracted from SOAR artifacts (delta optimization)
+  ✓ All 5 adapters completed
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 4: HISTORICAL DATA FETCH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: HistoricalDataService (MANDATORY for forecasting)
+  → fetch_for_signal(signal)
+  → MockHistoricalAdapter.query_time_series() for 3 tracks
+  ✓ MultiTrackHistoricalData: 3 tracks × 168 data points
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 5: FORECASTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: ForecastingService
+  → forecast_multi_track_ckg(signal, historical_data, graph)
+  → Track A (Rule): NORMAL within baseline
+  ✓ ForecastBundle generated with ETS models
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 6: CASE CONTEXT LINKING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: CaseContextLinkingService (subtype-aware)
+  → retrieve_rank_hydrate(signal, graph)
+  → _find_similar_extended() - TF-IDF + entity matching
+  → _filter_with_graph_context(signal_subtype='ioc')
+  → IOC subtype boost: +25% for IOC-related historical cases
+  ✓ Found 1 similar cases, harvested artifacts
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 7: CLASSIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: ClassificationService (subtype-aware)
+  → classify_extended_ckg(signal, enrichments, similar_cases, forecast)
+  → _generate_mitre_mapping(signal) - uses signal_subtype='ioc'
+  → _determine_incident_type() - returns 'Indicator Match' for IOC
+  ✓ Disposition: FALSE_POSITIVE @ 12% TP likelihood
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 8: RUNBOOK MATCHING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: RunbookRegistry
+  → fetch_applicable_runbooks(signal, classification, harvested_runbooks)
+  → Merging registry + harvested runbooks (deduplication)
+  ✓ Matched runbooks for signal subtype 'ioc'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 9: ACTION PROPOSAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: ActionProposalService (6 channels)
+  → propose_actions_ckg(signal, classification, enrichments, ...)
+  Channels:
+    1. seeded      → Governed runbooks/playbooks (YAML)
+    2. case_linked → SOAR archive (proven org intelligence)
+    3. learned     → Pattern-matched from similar cases
+    4. contextual  → Dynamic from enrichments
+    5. template    → Fallback signal-type defaults
+    6. ai          → LLM-generated suggestions
+  ✓ Generated 2 recommendations
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 10: GOVERNANCE GATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: GovernanceGate
+  → evaluate(actions, classification, enrichments)
+  → Returns: auto_execute, requires_approval, blocked
+  ✓ Actions evaluated for safety
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 11: AI OVERLAY (OPTIONAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: AIService
+  → generate_overlay(triage_report, signal)
+  ✓ AI overlay generated (mock mode)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 12: REPORT RENDERING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Service: ReportService
+  → generate_report(triage_report, ai_overlay, format='compact')
+  → Template: triage_report_compact.md.j2
+  ✓ Rendered 916 lines of markdown
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PIPELINE COMPLETE - ALL 12 PHASES EXECUTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Demo Complete!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Markdown report saved to: /mnt/c/Dev/soc_triage_bot/soc_triage_bot/output/demo_report_SOAR-107_fp.md
+✓ JSON summary saved to: /mnt/c/Dev/soc_triage_bot/soc_triage_bot/output/demo_result_SOAR-107_fp.json
+
+--- Report Sections Populated ---
+  ✓ Header: Signal info, timestamps
+  ✓ Decision Banner: FALSE_POSITIVE @ 0.12% TP likelihood
+  ✓ §1 Summary: SOC + Stakeholder overview
+  ✓ §2 Action Plan: 2 recommendations with AI enhancements:
+      - 3 AI next checks (query templates)
+      - Action rationale (evidence-backed WHY)
+      - Priority reasoning (action ordering)
+      - 4 additional AI suggestions
+      - 3 action dependencies
+      - 3 action risks
+  ✓ §3 Normalized Context: Entities, indicators, CVEs
+  ✓ §4 Correlation & Scope: 1 sightings, 1 hosts impacted
+  ✓ §5 Threat Intelligence: 1 indicators with TI enrichment
+  ✓ §6 Exposure: Asset context, 0 host vulns, env exposure
+  ✓ §7 Trend & Forecast: 3 tracks (Rule/IOC/Entity) with full backtest
+  ✓ §8 Timeline: 1 correlated events + AI attack chain
+  ✓ §9 Assessment: 2 TP drivers, 6 FP drivers, MITRE mapping
+  ✓ §10 Similar Cases: 1 cases with SOAR artifacts + AI narratives
+  ✓ §11 Closure Criteria: TP/FP decision guidance
+  ✓ §12 Stakeholder Snapshot: Executive summary
+  ✓ §13 Data Quality: 3 data gaps, 3 assumptions
+  ✓ Appendix: Raw signal payload
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REPORT PREVIEW (first 50 lines)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+
+
+
+
+
+
+# 🟢 FALSE POSITIVE
+
+**Severity:** LOW | **Confidence:** 12.0% | **Type:** Benign IOC Match
+
+---
+
+## 📋 Case Metadata
+
+| Field | Value |
+|-------|-------|
+| **Case ID** | SOAR-107 |
+| **Status** | OPEN |
+| **Analyst** | SOC Analyst Team |
+| **Opened** | 2025-12-22T19:02:09.646678+00:00Z |
+---
+
+## 🎯 What Happened
+
+HIGH confidence FALSE POSITIVE. IOC matches are from authorized security testing infrastructure. Activity is consistent with scheduled penetration testing. Add to allowlist.
+
+---
+
+## 👤 Who/Where
+
+| Asset | User | Segment | Criticality |
+|-------|------|---------|-------------|
+| WORKSTATION-042 | jdoe |  | medium |
+
+---
+
+## ⏰ When
+
+```
+Signal Time:    2025-12-22T19:02:09.646678+00:00Z
+Report Time:    2025-12-22T19:02:10.605724+00:00Z
+First Event:    2025-12-22T18:02:10.605724+00:00Z - IOC alert triggered for Malicious IOC Alert - Known C2 Domain and Hash
+```
+
+---
+
+## ✅ Actions Required
+
+
+... [truncated - see full report: /mnt/c/Dev/soc_triage_bot/soc_triage_bot/output/demo_report_SOAR-107_fp.md] ...
+
+📄 Full report (916 lines): /mnt/c/Dev/soc_triage_bot/soc_triage_bot/output/demo_report_SOAR-107_fp.md

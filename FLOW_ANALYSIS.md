@@ -15,11 +15,12 @@
 ✅ **All redundancies FIXED** (2/2 resolved)
 ✅ **All gaps FIXED** (3/3 resolved)
 ✅ **Graph integration:** Complete CKG flow
-✅ **Multi-signal support:** Handles SOAR, SIEM, IOC, CVE, and standalone signals  
+✅ **Multi-signal support:** Handles SOAR, SIEM, IOC, CVE, and standalone signals
 
 ### Service Architecture
 
 **Mandatory Services** (All signals require these):
+
 1. **SignalRouter** - Signal parsing and routing
 2. **CaseBootstrapService** - Case ID generation and graph initialization
 3. **CanonicalizeService** - Entity extraction and normalization
@@ -35,9 +36,11 @@
 13. **ReportService** - Report rendering (Jinja2 templates)
 
 **Optional Service** (Only one):
+
 - **AIService** - LLM-generated overlays and insights (can be disabled)
 
 **Key Point**: HistoricalDataService is **mandatory** for forecasting to work. Without it, forecasting is skipped and a warning is logged. All other services (except AIService) are required for complete triage workflow.
+
 #### ✅ REDUNDANCY 2 - FIXED
 
 **Baseline Enrichment Caching**: `EnrichmentService` now extracts baseline once and caches in `signal.metadata["_baseline_cache"]` before calling adapters. All 5 adapters (SIEM, EDR, TI, CMDB, Vuln) now check cache first. **Saves 20-50ms per triage**.
@@ -196,6 +199,109 @@ enrichment_data = {**soar_siem, **fresh_data}
 | **Governance**     | Evaluate actions                         | Evaluate actions                  |
 | **Report**         | Full 13-section report                   | Full 13-section report            |
 
+---
+
+## Signal Subtype Due Diligence Analysis
+
+### Current State: Signal Subtype Detection
+
+The system **DOES** analyze signal content to determine subtype (not just source type):
+
+**SignalRouter.\_determine_signal_subtype()** - Located at [signal_router.py#L328](soc_triage_bot/services/signal_router.py#L328):
+
+```python
+def _determine_signal_subtype(self, signal: Signal) -> str:
+    """Determine signal subtype based on content analysis.
+    Returns one of: auth, endpoint, network, email, vuln, ioc, hunt, user, other
+    """
+    # Direct mapping for explicit types
+    if signal_type == "cve":
+        return "vuln"
+    if signal_type == "ioc":
+        return "ioc"
+
+    # Content-based detection for SOAR/SIEM signals
+    searchable_text = f"{signal.description} {signal.title} {signal.tags}"
+
+    if any(kw in searchable_text for kw in ["login", "auth", "password"]):
+        return "auth"
+    if any(kw in searchable_text for kw in ["email", "phishing"]):
+        return "email"
+    if any(kw in searchable_text for kw in ["network", "dns", "c2"]):
+        return "network"
+    if any(kw in searchable_text for kw in ["process", "powershell", "malware"]):
+        return "endpoint"
+```
+
+**Key Point**: A SOAR case about IOC indicators gets `signal_subtype = "ioc"` based on content analysis, not just `signal_type`.
+
+### ✅ Due Diligence: Where Subtype IS Used
+
+1. **ForecastingService** - Uses `signal_subtype` to select appropriate metrics:
+   - `auth` subtype → authentication metrics (failed_logins, mfa_failures)
+   - `endpoint` subtype → endpoint metrics (process_creations, dll_loads)
+   - `network` subtype → network metrics (dns_queries, firewall_blocks)
+
+### ❌ GAP 4 (NEW): Subtype-Aware Due Diligence Missing
+
+**Problem**: Case linking and classification do NOT use `signal_subtype` for intelligent searching:
+
+| Service                       | Uses signal_subtype? | Impact                                                       |
+| ----------------------------- | -------------------- | ------------------------------------------------------------ |
+| **CaseContextLinkingService** | ❌ No                | SOAR case with IOC content doesn't search IOC-specific cases |
+| **ClassificationService**     | ❌ No                | Uses signal_type only for MITRE mapping                      |
+| **EnrichmentAdapters**        | ❌ No                | Same enrichment regardless of subtype                        |
+
+**Example Gap**: A SOAR case containing IOC data (malicious hash):
+
+- System detects `signal_subtype = "ioc"` ✅
+- Case linking searches by rule_id, entity overlap, etc. ❌ (doesn't prioritize IOC-specific cases)
+- Classification maps to "Security Alert" ❌ (should be "Indicator Match")
+- Enrichment doesn't prioritize ThreatIntel ❌ (should focus on TI)
+
+### 🔧 FIX 4 - IMPLEMENTED: Subtype-Aware Due Diligence
+
+**Files modified:**
+
+1. ✅ **CaseContextLinkingService** ([case_context_linking.py#L456](soc_triage_bot/services/case_context_linking.py#L456))
+
+   - Added `signal_subtype` parameter to `_filter_with_graph_context()`
+   - Added subtype keyword matching to boost cases with similar content
+   - Example: IOC subtype boosts cases containing "hash", "indicator", "malicious"
+
+2. ✅ **ClassificationService** ([classification.py#L420](soc_triage_bot/services/classification.py#L420))
+   - `_generate_mitre_mapping()` now uses `signal_subtype` first
+   - `_determine_incident_type()` now uses `signal_subtype` first
+   - Subtype → MITRE mapping: auth→TA0006, endpoint→TA0002, ioc→TA0011, etc.
+
+**Result:** A SOAR case containing IOC data (e.g., malicious hash) now:
+
+- Gets `signal_subtype = "ioc"` from content analysis ✅
+- Case linking boosts IOC-related historical cases (1.25x score) ✅
+- Classification returns "Indicator Match" incident type ✅
+- MITRE mapping includes TA0011 (C2) tactics ✅
+
+**Before Fix:**
+
+```
+SOAR Case (contains IOC hash):
+  signal_type = SIEM_ALERT
+  → Incident Type = "Security Alert"      ❌ Generic
+  → MITRE = TA0001 (Initial Access)       ❌ Wrong tactic
+  → Case Search = Generic entity matching ❌ Not IOC-focused
+```
+
+**After Fix:**
+
+```
+SOAR Case (contains IOC hash):
+  signal_type = SIEM_ALERT
+  signal_subtype = "ioc" (from content)
+  → Incident Type = "Indicator Match"     ✅ Correct
+  → MITRE = TA0011 (C2)                   ✅ Correct tactic
+  → Case Search = IOC-prioritized         ✅ Subtype-aware
+```
+
 **Key Insight**: The pipeline is **signal-type agnostic**. Every signal gets:
 
 - ✅ Unique case ID
@@ -214,9 +320,11 @@ enrichment_data = {**soar_siem, **fresh_data}
 ### Phase-by-Phase Service Invocation Order
 
 #### 🚀 **PHASE 0: CLI Entry & Signal Creation**
+
 **Entry Point**: `cli.py::triage()` [Line 303-530]
 
 **Signal Type Routing**:
+
 ```
 triage() → SignalRouter
   ├─ --signal-file → parse_signal_from_json() → detect_and_parse_soar_container()
@@ -232,6 +340,7 @@ triage() → SignalRouter
 ```
 
 **Services Involved**:
+
 - `SignalRouter` - Parses and normalizes all signal types
 
 **Output**: Normalized `Signal` object
@@ -239,9 +348,11 @@ triage() → SignalRouter
 ---
 
 #### 🔧 **PHASE 0.5: Service Container Initialization**
+
 **Function**: `setup_triage_service()` → `ServiceContainer()`
 
 **Services Initialized**:
+
 1. `ServiceContainer.startup()` - Initializes all adapters
    - SIEM Adapter
    - EDR Adapter
@@ -256,17 +367,21 @@ triage() → SignalRouter
 ---
 
 #### ⚡ **PHASE 1: Execution Entry**
+
 **Function**: `execute_triage()` → `triage_extended()`
 
 **Services Involved**:
+
 - `TriageService.triage_extended()` [Core orchestrator]
 
 ---
 
 #### 📊 **PHASE 1: Bootstrap Graph**
+
 **Function**: `CaseBootstrapService.bootstrap()`
 
 **Operations**:
+
 1. `_generate_case_id()` - Creates unique case ID (format: `CASE-YYYY-MM-DD-hash`)
 2. `_configure_budget()` - Sets retrieval budgets based on triage mode
 3. Creates `TriageContextGraph`
@@ -275,6 +390,7 @@ triage() → SignalRouter
 6. Adds `EvidenceEdge` linking case → signal
 
 **Services Involved**:
+
 - `CaseBootstrapService`
 
 **Output**: `TriageContextGraph` with case and signal nodes
@@ -282,9 +398,11 @@ triage() → SignalRouter
 ---
 
 #### 🏷️ **PHASE 1.5: Entity Canonicalization**
+
 **Function**: `CanonicalizeService.canonicalize_entities()`
 
 **Operations**:
+
 1. `_extract_rule_entities()` - Extracts from signal metadata
 2. `_extract_metadata_entities()` - Extracts from detection context
 3. Creates `EntityNode[]` for each unique entity
@@ -292,6 +410,7 @@ triage() → SignalRouter
 5. Links entities to signal and case
 
 **Services Involved**:
+
 - `CanonicalizeService`
 
 **Output**: Graph updated with `EntityNode[]`
@@ -299,15 +418,18 @@ triage() → SignalRouter
 ---
 
 #### 💧 **PHASE 2: Source Hydration**
+
 **Function**: `SourceHydrator.hydrate_if_needed()`
 
 **Operations**:
+
 - If signal has only ID (no data), fetches from source:
   - SOAR signals → `soar_adapter.get_container()`
   - SIEM signals → `siem_adapter.fetch_alert()`
 - Returns enriched signal + hydration metadata
 
 **Services Involved**:
+
 - `SourceHydrator`
 - `SOARAdapter` (if SOAR signal)
 - `SIEMAdapter` (if SIEM signal)
@@ -317,15 +439,19 @@ triage() → SignalRouter
 ---
 
 #### 🔍 **PHASE 3: Enrichment (Concurrent)**
+
 **Function**: `EnrichmentService.enrich_signal_ckg()`
 
 **Operations**:
+
 1. **Pre-enrichment**: `CaseArtifactHarvester.extract_baseline_enrichments()`
+
    - Extracts existing enrichments from SOAR artifacts (if present)
    - Caches in `signal.metadata["_baseline_cache"]`
    - **Avoids parsing artifacts 5 times** (optimization fix)
 
 2. **Concurrent Enrichment** (all run in parallel via `asyncio.gather()`):
+
    - `SIEMAdapter.enrich()` - Alert frequency, related events, FP rate
    - `EDRAdapter.enrich()` - Process trees, network connections, containment status
    - `ThreatIntelAdapter.enrich()` - IOC reputation, malicious scores, threat feeds
@@ -337,6 +463,7 @@ triage() → SignalRouter
    - Links observations to entities and signal
 
 **Services Involved**:
+
 - `EnrichmentService`
 - `CaseArtifactHarvester`
 - All 5 enrichment adapters
@@ -346,10 +473,13 @@ triage() → SignalRouter
 ---
 
 #### 📈 **PHASE 4: Historical Data Fetching & Forecasting**
+
 **Function**: `HistoricalDataService.fetch_for_signal()` → `ForecastingService.forecast_multi_track_ckg()`
 
 **Operations**:
+
 1. **Historical Data Fetch** (`HistoricalDataService`):
+
    - `_fetch_track()` called 3 times (Track A, B, C)
    - Track A: Detection rule frequency (rule_id history)
    - Track B: Indicator/IOC sightings (artifact history)
@@ -364,6 +494,7 @@ triage() → SignalRouter
    - `_write_forecasts_to_graph()` - Adds `ForecastNode[]`
 
 **Services Involved**:
+
 - `HistoricalDataService` (**MANDATORY**)
 - `ForecastingService`
 - `MockHistoricalAdapter` or live historical adapters
@@ -375,9 +506,11 @@ triage() → SignalRouter
 ---
 
 #### 🔗 **PHASE 5: Similar Case Retrieval**
+
 **Function**: `CaseContextLinkingService.retrieve_rank_hydrate()`
 
 **Operations**:
+
 1. `_should_run_with_graph_context()` - Checks if graph has detection data
 2. `_extract_entities_from_graph()` - Gets entities for matching
 3. `_get_asset_criticality_from_graph()` - Gets asset context for ranking
@@ -391,6 +524,7 @@ triage() → SignalRouter
 11. `_add_case_to_graph()` - Adds `SimilarCaseRefNode[]`
 
 **Services Involved**:
+
 - `CaseContextLinkingService`
 - `CaseArtifactHarvester`
 - `SOARAdapter` (for related cases)
@@ -400,10 +534,13 @@ triage() → SignalRouter
 ---
 
 #### 🎯 **PHASE 6: Classification**
+
 **Function**: `ClassificationService.classify_extended_ckg()`
 
 **Operations**:
+
 1. `classify_extended()` - Core classification logic:
+
    - Analyzes enrichments (TI rep, SIEM FP rate, detection presence)
    - Considers forecasts (anomaly scores, baseline comparison)
    - Weighs similar cases (historical outcomes, similarity scores)
@@ -415,6 +552,7 @@ triage() → SignalRouter
 3. `_apply_soar_classification_hints()` - Adjusts based on SOAR status
 
 **Services Involved**:
+
 - `ClassificationService`
 
 **Output**: `ClassificationResult` + graph updated with outcome node
@@ -422,9 +560,11 @@ triage() → SignalRouter
 ---
 
 #### 📚 **PHASE 6.5: Runbook Matching**
+
 **Function**: `RunbookRegistry.fetch_applicable_runbooks()`
 
 **Operations**:
+
 1. `_determine_runbook_ids()` - Matches based on signal type + classification
 2. Receives `harvested_runbooks` from Phase 5 (GAP 3 fix)
 3. Merges registry runbooks + harvested runbook refs
@@ -433,6 +573,7 @@ triage() → SignalRouter
 6. `_convert_soar_runbook()` - Converts to internal format
 
 **Services Involved**:
+
 - `RunbookRegistry`
 - `SOARAdapter` (for runbook fetch)
 
@@ -441,10 +582,13 @@ triage() → SignalRouter
 ---
 
 #### 🎬 **PHASE 7: Action Proposal**
+
 **Function**: `ActionProposalService.propose_actions_ckg()`
 
 **Operations**:
+
 1. `propose_actions()` - Aggregates from 6 channels:
+
    - **Runbooks**: Structured playbook steps
    - **Harvested**: Actions from similar cases
    - **Learned**: Historically successful patterns
@@ -457,6 +601,7 @@ triage() → SignalRouter
 4. `_write_actions_to_graph()` - Adds `ActionNode[]`
 
 **Services Involved**:
+
 - `ActionProposalService`
 - `CaseArtifactHarvester` (for learned patterns)
 
@@ -465,9 +610,11 @@ triage() → SignalRouter
 ---
 
 #### 🛡️ **PHASE 8: Governance Gate**
+
 **Function**: `GovernanceGate.evaluate()`
 
 **Operations**:
+
 1. `_evaluate_gating()` - Safety checks:
    - Blocks containment if FP likely (prevents false containment)
    - Requires approval for unknown/risky actions
@@ -476,9 +623,11 @@ triage() → SignalRouter
 3. `_mark_approval_required()` - Marks actions needing review
 
 **Services Involved**:
+
 - `GovernanceGate`
 
 **Output**: `GovernanceDecisionResult` with actions categorized:
+
 - `auto_execute[]` - Safe to run automatically
 - `requires_approval[]` - Needs analyst review
 - `blocked[]` - Not permitted
@@ -486,15 +635,18 @@ triage() → SignalRouter
 ---
 
 #### 🔎 **PHASE 8.5: Graph Validation** (GAP 1 fix)
+
 **Function**: `TriageService._validate_graph_completeness()`
 
 **Operations**:
+
 - Checks for required node types: CASE, SIGNAL, ENTITY, OBSERVATION, OUTCOME
 - Checks for recommended types: FORECAST, SIMILAR_CASE_REF, ACTION
 - Validates edge connectivity (edges >= nodes)
 - Logs warnings if graph is incomplete
 
 **Services Involved**:
+
 - `TriageService`
 
 **Output**: Validation result dict (logs warnings if incomplete)
@@ -502,9 +654,11 @@ triage() → SignalRouter
 ---
 
 #### 📋 **PHASE 9: Report Assembly**
+
 **Function**: `TriageService._assemble_triage_report()`
 
 **Operations**:
+
 1. `_build_enrichment_bundle()` - Consolidates enrichment results
 2. Builds `TriageReport` model (13 sections):
    - `ReportMeta` - ID, timestamp, version
@@ -522,6 +676,7 @@ triage() → SignalRouter
    - `ReportMetadata` - Triage metadata
 
 **Services Involved**:
+
 - `TriageService`
 
 **Output**: `TriageReport` (complete 13-section model)
@@ -529,9 +684,11 @@ triage() → SignalRouter
 ---
 
 #### 🤖 **PHASE 10: AI Overlay Generation** (Optional)
+
 **Function**: `AIService.generate_overlay()`
 
 **Operations** (only if `ai_enabled=true`):
+
 1. `_build_prompt_context()` - Constructs LLM context from report
 2. `_generate_all_sections()` - Calls LLM for:
    - Executive summary
@@ -541,6 +698,7 @@ triage() → SignalRouter
 3. Creates `AIOverlay` with LLM insights
 
 **Services Involved**:
+
 - `AIService` (**OPTIONAL** - only service that can be disabled)
 
 **Output**: `AIOverlay` or `None` (if disabled)
@@ -548,9 +706,11 @@ triage() → SignalRouter
 ---
 
 #### 📄 **PHASE 11: Report Rendering**
+
 **Function**: `ReportService.generate_report()`
 
 **Operations**:
+
 1. `get_template()` - Loads Jinja2 template:
    - `triage_report.md.j2` (full report)
    - `triage_report_compact.md.j2` (analyst view)
@@ -560,6 +720,7 @@ triage() → SignalRouter
 3. Returns Markdown string
 
 **Services Involved**:
+
 - `ReportService`
 
 **Output**: Rendered Markdown report (complete document)
@@ -567,9 +728,11 @@ triage() → SignalRouter
 ---
 
 #### 🎉 **PHASE 12: Result Return**
+
 **Function**: `TriageService.triage_extended()` returns `TriageResult`
 
 **Final Output**:
+
 ```python
 TriageResult(
     signal=signal,                          # Hydrated signal
@@ -590,24 +753,24 @@ TriageResult(
 
 ### Summary: Services by Phase
 
-| Phase | Services Invoked | Mandatory? |
-|-------|-----------------|------------|
-| 0 | `SignalRouter` | ✅ Yes |
-| 0.5 | `ServiceContainer` + All Adapters | ✅ Yes |
-| 1 | `CaseBootstrapService` | ✅ Yes |
-| 1.5 | `CanonicalizeService` | ✅ Yes |
-| 2 | `SourceHydrator`, SOAR/SIEM adapters | ✅ Yes |
-| 3 | `EnrichmentService`, `CaseArtifactHarvester`, 5 adapters | ✅ Yes |
-| 4 | `HistoricalDataService`, `ForecastingService` | ✅ Yes (for forecasting) |
-| 5 | `CaseContextLinkingService`, `CaseArtifactHarvester` | ✅ Yes |
-| 6 | `ClassificationService` | ✅ Yes |
-| 6.5 | `RunbookRegistry`, SOAR adapter | ✅ Yes |
-| 7 | `ActionProposalService`, `CaseArtifactHarvester` | ✅ Yes |
-| 8 | `GovernanceGate` | ✅ Yes |
-| 8.5 | `TriageService` (validation) | ✅ Yes |
-| 9 | `TriageService` (assembly) | ✅ Yes |
-| 10 | `AIService` | ❌ **Optional** |
-| 11 | `ReportService` | ✅ Yes |
+| Phase | Services Invoked                                         | Mandatory?               |
+| ----- | -------------------------------------------------------- | ------------------------ |
+| 0     | `SignalRouter`                                           | ✅ Yes                   |
+| 0.5   | `ServiceContainer` + All Adapters                        | ✅ Yes                   |
+| 1     | `CaseBootstrapService`                                   | ✅ Yes                   |
+| 1.5   | `CanonicalizeService`                                    | ✅ Yes                   |
+| 2     | `SourceHydrator`, SOAR/SIEM adapters                     | ✅ Yes                   |
+| 3     | `EnrichmentService`, `CaseArtifactHarvester`, 5 adapters | ✅ Yes                   |
+| 4     | `HistoricalDataService`, `ForecastingService`            | ✅ Yes (for forecasting) |
+| 5     | `CaseContextLinkingService`, `CaseArtifactHarvester`     | ✅ Yes                   |
+| 6     | `ClassificationService`                                  | ✅ Yes                   |
+| 6.5   | `RunbookRegistry`, SOAR adapter                          | ✅ Yes                   |
+| 7     | `ActionProposalService`, `CaseArtifactHarvester`         | ✅ Yes                   |
+| 8     | `GovernanceGate`                                         | ✅ Yes                   |
+| 8.5   | `TriageService` (validation)                             | ✅ Yes                   |
+| 9     | `TriageService` (assembly)                               | ✅ Yes                   |
+| 10    | `AIService`                                              | ❌ **Optional**          |
+| 11    | `ReportService`                                          | ✅ Yes                   |
 
 **Total Services**: 13 mandatory + 1 optional (AI)
 

@@ -1,0 +1,40 @@
+{
+  "signal_id": "SOAR-107",
+  "signal_type": "siem_alert",
+  "signal_subtype": "ioc",
+  "report_type": "fp",
+  "timestamp": "2025-12-22T19:02:09.646678+00:00",
+  "input_file": "/mnt/c/Dev/soc_triage_bot/examples/soar_container.json",
+  "classification": {
+    "disposition": "FALSE_POSITIVE",
+    "tp_likelihood": 0.12,
+    "severity": "low",
+    "confidence": "high",
+    "incident_type": "Benign IOC Match"
+  },
+  "forecast": {
+    "enabled": true,
+    "bucket_minutes": 60
+  },
+  "similar_cases_count": 1,
+  "recommendations_count": 2,
+  "ai_overlay": {
+    "model_version": "GPT-4o (2024-12-14)",
+    "tp_fp_likelihood": "likely_tp"
+  },
+  "pipeline_phases": [
+    "Phase 1: CaseBootstrapService",
+    "Phase 1.5: CanonicalizeService",
+    "Phase 2: SourceHydratorService",
+    "Phase 3: EnrichmentService",
+    "Phase 4: HistoricalDataService (MANDATORY)",
+    "Phase 5: ForecastingService",
+    "Phase 6: CaseContextLinkingService (subtype-aware)",
+    "Phase 7: ClassificationService (subtype-aware)",
+    "Phase 8: RunbookRegistry",
+    "Phase 9: ActionProposalService",
+    "Phase 10: GovernanceGate",
+    "Phase 11: AIService (OPTIONAL)",
+    "Phase 12: ReportService"
+  ]
+}

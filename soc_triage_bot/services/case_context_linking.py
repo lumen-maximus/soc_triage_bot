@@ -250,8 +250,11 @@ class CaseContextLinkingService:
         # =====================================================================
         # STEP 4: GRAPH-AWARE FILTERING (boost/skip based on detection presence)
         # =====================================================================
+        # Extract signal subtype for subtype-aware due diligence
+        signal_subtype = signal.metadata.get("signal_subtype", "other")
+
         filtered_candidates = self._filter_with_graph_context(
-            all_candidates, detection_present, asset_criticality
+            all_candidates, detection_present, asset_criticality, signal_subtype
         )
 
         # Sort by combined score
@@ -455,9 +458,32 @@ class CaseContextLinkingService:
         candidates: List[SimilarityResult],
         detection_present: Optional[bool],
         asset_criticality: str,
+        signal_subtype: str = "other",
     ) -> List[SimilarityResult]:
-        """Filter and boost candidates based on graph context."""
+        """Filter and boost candidates based on graph context and signal subtype.
+
+        Subtype-aware due diligence: A SOAR case containing IOC data will have
+        signal_subtype="ioc", so we boost cases that also dealt with IOC signals.
+        This ensures "IOC-level due diligence" regardless of signal source.
+
+        Args:
+            candidates: Similarity results to filter
+            detection_present: Whether detection is present in graph
+            asset_criticality: Asset criticality level
+            signal_subtype: Signal subtype (auth, endpoint, ioc, vuln, etc.)
+        """
         filtered = []
+
+        # Subtype keywords for matching case titles/descriptions
+        subtype_keywords = {
+            "auth": ["auth", "login", "password", "credential", "brute"],
+            "endpoint": ["process", "powershell", "malware", "execution", "script"],
+            "network": ["network", "dns", "c2", "beacon", "firewall"],
+            "email": ["email", "phishing", "attachment", "spam"],
+            "ioc": ["ioc", "indicator", "hash", "ip", "domain", "malicious"],
+            "vuln": ["vuln", "cve", "exploit", "patch", "vulnerability"],
+            "hunt": ["hunt", "threat", "proactive", "investigation"],
+        }
 
         for candidate in candidates:
             score = candidate.combined_score
@@ -473,6 +499,23 @@ class CaseContextLinkingService:
             # Boost if asset is critical
             if asset_criticality in ["critical", "high"]:
                 score *= 1.1
+
+            # =========================================================
+            # SUBTYPE-AWARE BOOST: Prioritize cases matching subtype
+            # =========================================================
+            case_data = self._get_case_details(candidate.case_id)
+            if case_data and signal_subtype in subtype_keywords:
+                case_text = self._case_to_text(case_data).lower()
+                keywords = subtype_keywords[signal_subtype]
+
+                # Count matching keywords in case
+                matches = sum(1 for kw in keywords if kw in case_text)
+                if matches >= 2:
+                    # Strong subtype match - significant boost
+                    score *= 1.25
+                elif matches >= 1:
+                    # Partial subtype match - moderate boost
+                    score *= 1.1
 
             # Create new result with adjusted score
             filtered.append(

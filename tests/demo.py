@@ -1,33 +1,36 @@
 #!/usr/bin/env python3
 """
-Full SOC Triage Bot Demo - All Features of triage_extended Pipeline
+Full SOC Triage Bot Demo - Complete Pipeline Execution
 
-This demo exercises the complete triage pipeline and populates ALL 13 report sections:
+This demo exercises the complete triage pipeline with proper phase enumeration
+matching the actual TriageService.triage_extended() implementation.
 
-Header: Signal info, timestamps, metadata
-Decision Banner: Classification verdict and rationale
-§1 Summary: SOC + Stakeholder overview
-§2 Action Plan: SOC Runbook actions with AI enhancements:
-    - Deterministic recommendations (from ActionProposalService)
-    - AI next checks (query templates)
-    - AI action rationale (evidence-backed WHY)
-    - AI priority reasoning (action ordering)
-    - AI additional suggestions
-    - AI action dependencies
-    - AI action risks
-§3 Normalized Signal Context: Entities, indicators, CVEs
-§4 Correlation & Scope: Local sightings, scope assessment
-§5 Threat Intelligence: TI enrichment per indicator
-§6 Exposure & Vulnerability: Asset context, host vulns, environment exposure
-§7 Trend & Forecast: Multi-track ETS (Rule/IOC/Entity tracks)
-§8 Evidence Timeline: Correlated events
-§9 Triage Assessment: Disposition reasoning, MITRE mapping
-§10 Similar Cases: Historical cases with SOAR artifacts
-§11 Closure Criteria: TP/FP decision guidance
-§12 Stakeholder Snapshot: Executive summary
-§13 Data Quality & Gaps: Data gaps and assumptions
-Appendix: Raw payload
+Pipeline Phases (from triage.py):
+  Phase 1:   CaseBootstrapService    - Graph + case ID initialization
+  Phase 1.5: CanonicalizeService     - Entity extraction and normalization
+  Phase 2:   SourceHydratorService   - Signal hydration from SOAR/SIEM
+  Phase 3:   EnrichmentService       - Multi-adapter enrichment (5 adapters)
+  Phase 4:   HistoricalDataService   - Auto-fetch historical time series
+  Phase 5:   ForecastingService      - Multi-track ETS forecasting
+  Phase 6:   CaseContextLinkingService - Similar case retrieval + harvest
+  Phase 7:   ClassificationService   - TP/FP disposition analysis
+  Phase 8:   RunbookRegistry         - Runbook matching and merging
+  Phase 9:   ActionProposalService   - Action recommendation generation
+  Phase 10:  GovernanceGate          - Action safety evaluation
+  Phase 11:  AIService (optional)    - LLM-generated overlays
+  Phase 12:  ReportService           - Report rendering (Jinja2 templates)
 
+Usage:
+  python demo.py                          # Default: TP report from soar_container.json
+  python demo.py -type tp                 # True Positive report
+  python demo.py -type fp                 # False Positive report
+  python demo.py -type benign             # Benign activity report
+  python demo.py -input examples/custom.json  # Custom input file
+
+Output (in soc_triage_bot/output/):
+  - demo_report_<signal_id>.md            # Compact report with full report collapsed
+  - demo_result_<signal_id>.json          # JSON summary
+  - console.log                           # Console output capture
 """
 
 import argparse
@@ -35,7 +38,6 @@ import asyncio
 import io
 import json
 import sys
-from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -44,11 +46,9 @@ from soc_triage_bot.models.signal import (
     ArtifactContext,
     DetectionContext,
     EntityBehaviorContext,
-    VulnerabilityContext,
 )
 from soc_triage_bot.models.triage_report import (
     AssetContext,
-    AttachmentMetadata,
     ClassificationResult,
     EnrichmentBundle,
     EnrichmentNotes,
@@ -67,23 +67,32 @@ from soc_triage_bot.models.triage_report import (
     ForecastTrack,
     ForecastTracks,
     HostContext,
-    HostVulnerability,
     LocalSighting,
     MitreMapping,
     NormalizedSignal,
     Recommendation,
     RelatedEvent,
     ReportMeta,
-    RunbookRef,
     ScopeAssessment,
     SignalContext,
     SimilarCase,
     ThreatIntelEntry,
     TriageReport,
-    UserContext,
 )
 from soc_triage_bot.services import AIService
 from soc_triage_bot.services.report import ReportService
+
+# =============================================================================
+# REPORT TYPE ENUM
+# =============================================================================
+
+
+class ReportType:
+    """Report disposition types."""
+
+    TP = "tp"  # True Positive
+    FP = "fp"  # False Positive
+    BENIGN = "benign"  # Benign activity
 
 
 # =============================================================================
@@ -102,11 +111,11 @@ class TeeIO:
         try:
             self.original.write(data)
         except Exception:
-            pass  # Continue even if original stream fails
+            pass
         try:
             self.buffer.write(data)
         except Exception:
-            pass  # Continue even if buffer write fails
+            pass
 
     def flush(self):
         try:
@@ -127,7 +136,6 @@ class TeeIO:
 # =============================================================================
 
 
-# ANSI color codes
 class Colors:
     """ANSI color codes for terminal output."""
 
@@ -141,8 +149,6 @@ class Colors:
     DIM = "\033[2m"
     UNDERLINE = "\033[4m"
     RESET = "\033[0m"
-
-    # Gradient-like colors
     PURPLE = "\033[38;5;135m"
     MAGENTA = "\033[38;5;199m"
     ORANGE = "\033[38;5;208m"
@@ -152,8 +158,6 @@ class Colors:
 
 def supports_color() -> bool:
     """Check if terminal supports color output."""
-    import sys
-
     if not hasattr(sys.stdout, "isatty"):
         return False
     if not sys.stdout.isatty():
@@ -168,16 +172,18 @@ def c(text: str, color: str) -> str:
     return text
 
 
-def show_banner(subtitle: str = "", show_version: bool = True):
-    """Display the SOC Agent banner with optional subtitle.
+def strip_ansi_codes(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    import re
 
-    Args:
-        subtitle: Optional subtitle to display below the banner
-        show_version: Whether to show version info
-    """
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    return ansi_escape.sub("", text)
+
+
+def show_banner(subtitle: str = "", show_version: bool = True):
+    """Display the SOC Agent banner with optional subtitle."""
     version = "v1.0.0"
 
-    # Clean, compact ASCII art banner
     print("")
     print(f"  {c('╭─────────────────────────────────────────────╮', Colors.CYAN)}")
     print(
@@ -212,7 +218,6 @@ def show_banner(subtitle: str = "", show_version: bool = True):
     )
     print(f"  {c('╰─────────────────────────────────────────────╯', Colors.CYAN)}")
 
-    # Tagline
     tagline = "🛡️  Autonomous Security Operations Center"
     print(f"\n    {c(tagline, Colors.WHITE + Colors.BOLD)}")
 
@@ -224,196 +229,247 @@ def show_banner(subtitle: str = "", show_version: bool = True):
     if subtitle:
         print(f"\n    {c('▸', Colors.TEAL)} {c(subtitle, Colors.WHITE)}")
 
-    print("")  # Empty line after banner
+    print("")
 
 
-def create_sample_signal() -> Signal:
-    """Create a realistic sample signal with all context fields."""
+def load_soar_container(file_path: str) -> dict:
+    """Load SOAR container JSON from file."""
+    with open(file_path, "r") as f:
+        return json.load(f)
+
+
+def create_signal_from_soar_container(container: dict, report_type: str) -> Signal:
+    """Create a Signal object from a SOAR container JSON."""
+    # Extract artifacts
+    artifacts = container.get("data", {}).get("artifacts", [])
+
+    # Build entities from artifacts
+    entities = {
+        "hostname": [],
+        "ip": [],
+        "domain": [],
+        "hash": [],
+        "username": [],
+    }
+    indicators = {}
+
+    for artifact in artifacts:
+        cef = artifact.get("cef", {})
+        indicator = artifact.get("indicator", {})
+
+        # Extract from CEF
+        if cef.get("sourceHostName"):
+            entities["hostname"].append(cef["sourceHostName"])
+        if cef.get("sourceAddress"):
+            entities["ip"].append(cef["sourceAddress"])
+        if cef.get("destinationAddress"):
+            entities["ip"].append(cef["destinationAddress"])
+        if cef.get("destinationDnsDomain"):
+            entities["domain"].append(cef["destinationDnsDomain"])
+        if cef.get("fileHashSha256"):
+            entities["hash"].append(cef["fileHashSha256"])
+        if cef.get("suser"):
+            entities["username"].append(cef["suser"])
+
+        # Extract indicators
+        if indicator:
+            ind_type = indicator.get("type", "unknown")
+            ind_value = indicator.get("value", "")
+            if ind_value:
+                indicators[ind_type] = ind_value
+
+    # Deduplicate
+    for key in entities:
+        entities[key] = list(set(entities[key]))
+
+    # Get primary hostname and username
+    primary_hostname = (
+        entities["hostname"][0] if entities["hostname"] else "UNKNOWN-HOST"
+    )
+    primary_username = entities["username"][0] if entities["username"] else "unknown"
+    primary_domain = entities["domain"][0] if entities["domain"] else None
+    primary_ip = entities["ip"][0] if entities["ip"] else None
+
     return Signal(
-        signal_id="DEMO-2024-001",
+        signal_id=f"SOAR-{container.get('id', '000')}",
         signal_type=SignalType.SIEM_ALERT,
         timestamp=datetime.now(timezone.utc),
-        source=SignalSource(  # type: ignore[call-arg]
-            system="Splunk",
-            rule_id="RULE-PS-ENCODED-001",
-            rule_name="Suspicious PowerShell Encoded Command",
+        source=SignalSource(
+            system="SOAR",
+            rule_id=f"SOAR-RULE-{container.get('id', '000')}",
+            rule_name=container.get("name", "Unknown Rule"),
         ),
-        title="PowerShell with Base64 Encoded Command Detected",
-        description=(
-            "A PowerShell process was observed executing with a base64 encoded "
-            "command line argument. This technique is commonly used by attackers "
-            "to obfuscate malicious commands and evade detection."
-        ),
-        severity="high",
-        entities={
-            "hostname": ["WORKSTATION-042"],
-            "username": ["jsmith"],
-            "ip": ["192.168.1.42", "10.0.0.5"],
-            "process": ["powershell.exe"],
-            "domain": ["suspicious-domain.com"],
+        title=container.get("name", "Unknown Alert"),
+        description=container.get("description", "No description provided"),
+        severity=container.get("severity", "medium"),
+        entities=entities,
+        indicators=indicators,
+        tags=container.get("tags", []),
+        raw_data=container,
+        metadata={
+            "soar_id": str(container.get("id")),
+            "source_data_identifier": container.get("source_data_identifier"),
         },
-        tags=["malware", "powershell", "execution", "T1059.001"],
-        raw_data={
-            "command_line": "powershell.exe -enc SQBFAFgA...",
-            "parent_process": "explorer.exe",
-            "file_hash": "abc123def456789012345678901234567890abcdef",
-            "process_id": 1234,
-            "user_sid": "S-1-5-21-123456789-1234567890-123456789-1001",
-            "event_id": 4688,
-            "logon_type": 10,
-        },
-        # Track A: Detection context
-        detection_context=DetectionContext(  # type: ignore[call-arg]
-            rule_id="RULE-PS-ENCODED-001",
-            rule_name="Suspicious PowerShell Encoded Command",
-            analytic_family="Execution",
-            detection_name="Encoded PowerShell",
+        detection_context=DetectionContext(
+            rule_id=f"SOAR-RULE-{container.get('id', '000')}",
+            rule_name=container.get("name", "Unknown Rule"),
+            analytic_family=(
+                "IOC Match" if "ioc" in container.get("tags", []) else "Detection"
+            ),
+            detection_name=container.get("name", "Unknown"),
         ),
-        # Track B: Artifact/IOC context
         artifact_context=ArtifactContext(
-            domain="suspicious-domain.com",
-            process_name="powershell.exe",
-            cmdline_hash="abc123",
+            domain=primary_domain,
+            ip=primary_ip,
+            sha256=entities["hash"][0] if entities["hash"] else None,
         ),
-        # Track C: Entity behavior context
-        entity_context=EntityBehaviorContext(  # type: ignore[call-arg]
-            hostname="WORKSTATION-042",
-            username="jsmith",
-            src_ip="192.168.1.42",
-            dst_ip="10.0.0.5",
+        entity_context=EntityBehaviorContext(
+            hostname=primary_hostname,
+            username=primary_username,
+            src_ip=primary_ip,
             primary_entity_type="hostname",
-            primary_entity_value="WORKSTATION-042",
+            primary_entity_value=primary_hostname,
         ),
-        # Vulnerability context
-        vuln_context=VulnerabilityContext(cve="CVE-2024-1234"),  # type: ignore[call-arg]
     )
 
 
-def create_full_triage_report(signal: Signal, is_true_positive: bool = True) -> TriageReport:
-    """Create a TriageReport with all sections fully populated."""
+def create_full_triage_report(signal: Signal, report_type: str) -> TriageReport:
+    """Create a TriageReport with all sections fully populated based on report type."""
 
-    # =========================================================================
-    # NORMALIZED SIGNAL (r.signal)
-    # =========================================================================
+    now = datetime.now(timezone.utc)
+
+    # Determine classification based on report type
+    if report_type == ReportType.TP:
+        classification = ClassificationResult(
+            disposition="TRUE_POSITIVE",
+            tp_likelihood=0.92,
+            severity="high",
+            confidence="high",
+            incident_type="Indicator Match",
+            mitre=MitreMapping(
+                tactics=["Command and Control", "Exfiltration"],
+                techniques=["T1071", "T1102", "T1041"],
+            ),
+            reasons_tp=[
+                "IOC hash matched known Cobalt Strike loader (VirusTotal 48/72)",
+                "Domain evil-c2-server.com flagged by 4 TI sources",
+                "IP 203.0.113.50 on AbuseIPDB with 100% confidence",
+                "Similar IOC case CASE-2024-0892 confirmed as compromise",
+                "Entity WORKSTATION-042 shows anomalous behavior spike (4.5x)",
+            ],
+            reasons_fp=[
+                "Host is a developer workstation (may have test files)",
+                "No confirmed data exfiltration observed yet",
+            ],
+            triage_judgment=(
+                "HIGH confidence TRUE POSITIVE. Multiple IOC matches from authoritative "
+                "threat intelligence sources confirm malicious activity. Immediate "
+                "containment and investigation recommended."
+            ),
+            runbook_ref="RB-IOC-001 IOC Response Runbook",
+        )
+    elif report_type == ReportType.FP:
+        classification = ClassificationResult(
+            disposition="FALSE_POSITIVE",
+            tp_likelihood=0.12,
+            severity="low",
+            confidence="high",
+            incident_type="Benign IOC Match",
+            mitre=MitreMapping(tactics=["Initial Access"], techniques=["T1190"]),
+            reasons_tp=[
+                "IOC hash detected in environment",
+                "Domain contacted by system",
+            ],
+            reasons_fp=[
+                "Hash is known benign security testing tool (confirmed by IT)",
+                "Domain is internal honeypot infrastructure",
+                "IP is CDN endpoint used by legitimate application",
+                "Similar pattern confirmed as authorized pentest in CASE-2024-0634",
+                "Activity matches scheduled security scan window",
+                "User is security team member with authorization",
+            ],
+            triage_judgment=(
+                "HIGH confidence FALSE POSITIVE. IOC matches are from authorized "
+                "security testing infrastructure. Activity is consistent with "
+                "scheduled penetration testing. Add to allowlist."
+            ),
+            runbook_ref="RB-FP-001 False Positive Tuning",
+        )
+    else:  # BENIGN
+        classification = ClassificationResult(
+            disposition="BENIGN",
+            tp_likelihood=0.05,
+            severity="informational",
+            confidence="high",
+            incident_type="Normal Activity",
+            mitre=MitreMapping(tactics=[], techniques=[]),
+            reasons_tp=[
+                "IOC pattern detected",
+            ],
+            reasons_fp=[
+                "Activity is standard system behavior",
+                "All contacted domains are legitimate business services",
+                "File hashes match approved software inventory",
+                "User activity within normal working hours",
+                "No indicators of compromise detected",
+                "Network traffic patterns consistent with business operations",
+                "Similar alerts consistently benign (95% FP rate for this rule)",
+            ],
+            triage_judgment=(
+                "BENIGN activity. No security concern. This alert pattern has "
+                "95% historical false positive rate and matches normal business "
+                "operations. Consider tuning detection rule threshold."
+            ),
+            runbook_ref="",
+        )
+
+    # Normalized signal
     normalized_signal = NormalizedSignal(
         id=signal.signal_id,
         type=signal.signal_type.value.upper(),
         source=signal.source.system,
         name=signal.title,
-        category="Execution / Defense Evasion",
+        category="IOC Match" if "ioc" in signal.tags else "Security Alert",
         timestamp_utc=signal.timestamp.isoformat() + "Z" if signal.timestamp else "",
         raw=signal.raw_data or {},
     )
 
-    # =========================================================================
-    # REPORT METADATA (r.meta)
-    # =========================================================================
+    # Report metadata
     report_meta = ReportMeta(
-        generated_utc=datetime.now(timezone.utc).isoformat() + "Z",
-        triage_owner="Analyst Team Alpha",
+        generated_utc=now.isoformat() + "Z",
+        triage_owner="SOC Analyst Team",
         tool_version="2.0.0",
     )
 
-    # =========================================================================
-    # SIGNAL CONTEXT (r.ctx) - Section 3
-    # =========================================================================
+    # Signal context - subtype detected from content
+    signal_subtype = (
+        "ioc"
+        if any(t in signal.tags for t in ["ioc", "indicator", "hash"])
+        else "other"
+    )
     signal_context = SignalContext(
-        signal_subtype="SIEM_ALERT",
+        signal_subtype=signal_subtype,
         entity_focus=EntityFocus(
-            primary="hostname:WORKSTATION-042",
-            secondary=["username:jsmith", "src_ip:192.168.1.42"],
+            primary=f"hostname:{signal.entity_context.hostname if signal.entity_context else 'UNKNOWN'}",
+            secondary=[f"ip:{ip}" for ip in signal.entities.get("ip", [])[:2]],
         ),
-        username="jsmith",
-        hostname="WORKSTATION-042",
-        src_ip="192.168.1.42",
-        dst_ip="10.0.0.5",
-        alert_rule="Suspicious PowerShell Encoded Command",
-        alert_vendor="Splunk",
-        indicators={
-            "domain": "suspicious-domain.com",
-            "ip": "10.0.0.5",
-            "hash": "abc123def456789012345678901234567890abcdef",
-            "process": "powershell.exe",
-        },
-        cves=["CVE-2024-1234", "CVE-2023-9876"],
+        username=signal.entity_context.username if signal.entity_context else None,
+        hostname=signal.entity_context.hostname if signal.entity_context else None,
+        src_ip=signal.entity_context.src_ip if signal.entity_context else None,
+        dst_ip=signal.entities.get("ip", [None])[0],
+        alert_rule=signal.source.rule_name,
+        alert_vendor=signal.source.system,
+        indicators=signal.indicators,
+        cves=[],
     )
 
-    # =========================================================================
-    # CLASSIFICATION RESULT (r.classification) - Section 9
-    # =========================================================================
-    if is_true_positive:
-        classification = ClassificationResult(
-            disposition="TRUE_POSITIVE",
-            tp_likelihood=0.87,
-            severity="high",
-            confidence="high",
-            incident_type="Credential Theft / Lateral Movement",
-            mitre=MitreMapping(
-                tactics=["Execution", "Defense Evasion", "Credential Access"],
-                techniques=["T1059.001", "T1027", "T1003.001", "T1055"],
-            ),
-            reasons_tp=[
-                "IP 10.0.0.5 flagged malicious by 3 TI sources (VirusTotal, AbuseIPDB, OTX)",
-                "Encoded PowerShell matches Cobalt Strike beacon signature",
-                "Domain suspicious-domain.com registered within last 7 days",
-                "Parent process explorer.exe spawning encoded powershell is anomalous",
-                "ETS Track A shows 5x spike above historical baseline",
-                "Similar case CASE-2024-0892 confirmed as Cobalt Strike compromise",
-            ],
-            reasons_fp=[
-                "User jsmith is a developer with elevated privileges",
-                "Host WORKSTATION-042 is a development workstation (may use encoded scripts)",
-                "No confirmed data exfiltration observed yet",
-            ],
-            triage_judgment=(
-                "High confidence TRUE POSITIVE based on multi-source TI matches, "
-                "attack pattern consistency, and correlation with similar confirmed case. "
-                "Immediate containment recommended."
-            ),
-            runbook_ref="RB-MAL-003 Malware/Cobalt Strike Response",
-        )
-    else:
-        classification = ClassificationResult(
-            disposition="FALSE_POSITIVE",
-            tp_likelihood=0.15,
-            severity="low",
-            confidence="high",
-            incident_type="Benign Developer Activity",
-            mitre=MitreMapping(
-                tactics=["Execution"],
-                techniques=["T1059.001"],
-            ),
-            reasons_tp=[
-                "Encoded PowerShell command detected",
-                "Process spawned from explorer.exe",
-            ],
-            reasons_fp=[
-                "User jsmith is a developer with elevated privileges and known to use encoded scripts",
-                "Host WORKSTATION-042 is a development workstation with CI/CD tooling",
-                "Domain contacted is internal build infrastructure (verified)",
-                "Similar pattern seen previously and confirmed as legitimate automation (CASE-2024-0634)",
-                "No malicious indicators from threat intelligence sources",
-                "Activity matches normal working hours pattern for this user",
-            ],
-            triage_judgment=(
-                "High confidence FALSE POSITIVE. Activity consistent with legitimate developer "
-                "automation and CI/CD tooling. Similar case confirmed as benign. "
-                "Recommend adding to allowlist for this user/host combination."
-            ),
-            runbook_ref="RB-FP-001 False Positive Tuning",
-        )
-
-    # =========================================================================
-    # FORECAST BUNDLE (r.forecast) - Section 7
-    # =========================================================================
-    now = datetime.now(timezone.utc)
+    # Forecast bundle
     history_start = (now - timedelta(days=7)).isoformat() + "Z"
     history_end = now.isoformat() + "Z"
 
-    # Track A: Rule/Detection
     track_a = ForecastTrack(
-        metric_key="rule:RULE-PS-ENCODED-001",
-        metric_name="Encoded PowerShell Alerts (RULE-PS-ENCODED-001)",
+        metric_key=f"rule:{signal.source.rule_id}",
+        metric_name=f"IOC Alerts ({signal.source.rule_id})",
         series_window="7d",
         history_points=168,
         series_meta=ForecastSeriesMeta(
@@ -426,18 +482,19 @@ def create_full_triage_report(signal: Signal, is_true_positive: bool = True) -> 
             data_completeness="COMPLETE",
         ),
         model_meta=ForecastModelMeta(
-            ets_variant="ETS(A,Ad,N)",
-            alpha=0.3,
-            beta=0.1,
-            damped=True,
+            ets_variant="ETS(A,Ad,N)", alpha=0.3, beta=0.1, damped=True
         ),
         horizons={
             "H1": ForecastHorizonResult(total=4.2, lower=2.1, upper=6.8),
             "H6": ForecastHorizonResult(total=18.5, lower=12.3, upper=25.7),
             "H24": ForecastHorizonResult(total=65.2, lower=48.1, upper=85.9),
         },
-        reliability="HIGH",
-        interpretation="SPIKE - 5.2x above expected. Anomalous activity detected.",
+        reliability="HIGH" if report_type == ReportType.TP else "MEDIUM",
+        interpretation=(
+            "SPIKE - 4.5x above expected"
+            if report_type == ReportType.TP
+            else "NORMAL - within baseline"
+        ),
         confidence="high",
         backtest=ForecastBacktest(
             status="ok",
@@ -447,195 +504,21 @@ def create_full_triage_report(signal: Signal, is_true_positive: bool = True) -> 
             metrics={
                 "H1": ForecastHorizonMetrics(
                     smape=8.2, mase=0.65, rmse=1.2, coverage95=0.92
-                ),
-                "H6": ForecastHorizonMetrics(
-                    smape=12.5, mase=0.78, rmse=3.4, coverage95=0.89
-                ),
-                "H24": ForecastHorizonMetrics(
-                    smape=18.3, mase=0.92, rmse=8.7, coverage95=0.85
-                ),
+                )
             },
             thresholds={
                 "H1": ForecastHorizonThresholds(
-                    spike_q=0.95,
-                    drop_q=0.05,
-                    spike_threshold_p95=8.5,
-                    spike_threshold_p99=12.3,
-                    drop_threshold_p05=0.5,
-                ),
-                "H6": ForecastHorizonThresholds(
-                    spike_q=0.95,
-                    drop_q=0.05,
-                    spike_threshold_p95=35.2,
-                    spike_threshold_p99=48.7,
-                    drop_threshold_p05=3.2,
-                ),
-                "H24": ForecastHorizonThresholds(
-                    spike_q=0.95,
-                    drop_q=0.05,
-                    spike_threshold_p95=95.0,
-                    spike_threshold_p99=120.5,
-                    drop_threshold_p05=15.8,
-                ),
+                    spike_threshold_p95=8.5, drop_threshold_p05=0.5
+                )
             },
-            notes=[
-                "Damped trend applied due to short history",
-                "Weekday seasonality detected",
-            ],
         ),
         latest=ForecastLatest(
-            value=22.0,
-            percentile=98.5,
-            anomaly_score=0.92,
-            current_vs_expected="5.2x above expected",
-            current_bucket_count=22,
-        ),
-    )
-
-    # Track B: IOC/Indicator
-    track_b = ForecastTrack(
-        metric_key="ioc:suspicious-domain.com",
-        metric_name="Domain Sightings (suspicious-domain.com)",
-        series_window="7d",
-        history_points=168,
-        series_meta=ForecastSeriesMeta(
-            history_start_utc=history_start,
-            history_end_utc=history_end,
-            bucket_minutes=60,
-            total_buckets=168,
-            missing_buckets=5,
-            missing_pct=3.0,
-            data_completeness="COMPLETE",
-        ),
-        model_meta=ForecastModelMeta(
-            ets_variant="ETS(A,N,N)",
-            alpha=0.25,
-        ),
-        horizons={
-            "H1": ForecastHorizonResult(total=2.1, lower=0.8, upper=3.9),
-            "H6": ForecastHorizonResult(total=8.4, lower=4.2, upper=13.5),
-            "H24": ForecastHorizonResult(total=28.7, lower=18.3, upper=42.1),
-        },
-        reliability="MEDIUM",
-        interpretation="ELEVATED - 2.8x above baseline. New indicator emerging.",
-        confidence="medium",
-        backtest=ForecastBacktest(
-            status="ok",
-            window_days=7,
-            splits=3,
-            step_buckets=24,
-            metrics={
-                "H1": ForecastHorizonMetrics(
-                    smape=15.3, mase=0.88, rmse=1.8, coverage95=0.85
-                ),
-                "H6": ForecastHorizonMetrics(
-                    smape=22.1, mase=1.02, rmse=4.2, coverage95=0.82
-                ),
-                "H24": ForecastHorizonMetrics(
-                    smape=28.7, mase=1.15, rmse=9.5, coverage95=0.78
-                ),
-            },
-            thresholds={
-                "H1": ForecastHorizonThresholds(
-                    spike_threshold_p95=5.2,
-                    spike_threshold_p99=7.8,
-                    drop_threshold_p05=0.2,
-                ),
-                "H6": ForecastHorizonThresholds(
-                    spike_threshold_p95=18.5,
-                    spike_threshold_p99=25.3,
-                    drop_threshold_p05=1.5,
-                ),
-                "H24": ForecastHorizonThresholds(
-                    spike_threshold_p95=55.0,
-                    spike_threshold_p99=72.8,
-                    drop_threshold_p05=8.2,
-                ),
-            },
-            notes=["Limited history for IOC (first seen 5 days ago)"],
-        ),
-        latest=ForecastLatest(
-            value=8.0,
-            percentile=89.2,
-            anomaly_score=0.72,
-            current_vs_expected="2.8x above expected",
-        ),
-    )
-
-    # Track C: Entity Behavior
-    track_c = ForecastTrack(
-        metric_key="entity:hostname:WORKSTATION-042",
-        metric_name="Suspicious Executions (WORKSTATION-042)",
-        series_window="7d",
-        history_points=168,
-        series_meta=ForecastSeriesMeta(
-            history_start_utc=history_start,
-            history_end_utc=history_end,
-            bucket_minutes=60,
-            total_buckets=168,
-            missing_buckets=0,
-            missing_pct=0.0,
-            data_completeness="COMPLETE",
-        ),
-        model_meta=ForecastModelMeta(
-            ets_variant="ETS(A,Ad,A)",
-            alpha=0.35,
-            beta=0.08,
-            gamma=0.15,
-            seasonal_period=24,
-            damped=True,
-        ),
-        horizons={
-            "H1": ForecastHorizonResult(total=3.8, lower=1.5, upper=6.2),
-            "H6": ForecastHorizonResult(total=15.2, lower=9.8, upper=21.5),
-            "H24": ForecastHorizonResult(total=52.8, lower=38.2, upper=70.5),
-        },
-        reliability="HIGH",
-        interpretation="SPIKE - 4.1x above expected. Entity anomaly detected.",
-        confidence="high",
-        backtest=ForecastBacktest(
-            status="ok",
-            window_days=7,
-            splits=5,
-            step_buckets=24,
-            metrics={
-                "H1": ForecastHorizonMetrics(
-                    smape=6.8, mase=0.58, rmse=0.9, coverage95=0.94
-                ),
-                "H6": ForecastHorizonMetrics(
-                    smape=10.2, mase=0.72, rmse=2.8, coverage95=0.91
-                ),
-                "H24": ForecastHorizonMetrics(
-                    smape=14.5, mase=0.85, rmse=6.2, coverage95=0.88
-                ),
-            },
-            thresholds={
-                "H1": ForecastHorizonThresholds(
-                    spike_threshold_p95=7.5,
-                    spike_threshold_p99=10.2,
-                    drop_threshold_p05=0.8,
-                ),
-                "H6": ForecastHorizonThresholds(
-                    spike_threshold_p95=28.5,
-                    spike_threshold_p99=38.2,
-                    drop_threshold_p05=4.5,
-                ),
-                "H24": ForecastHorizonThresholds(
-                    spike_threshold_p95=85.0,
-                    spike_threshold_p99=105.2,
-                    drop_threshold_p05=18.5,
-                ),
-            },
-            notes=[
-                "Daily seasonality detected (work hours pattern)",
-                "Damped trend for stability",
-            ],
-        ),
-        latest=ForecastLatest(
-            value=18.0,
-            percentile=97.2,
-            anomaly_score=0.88,
-            current_vs_expected="4.1x above expected",
+            value=22.0 if report_type == ReportType.TP else 3.0,
+            percentile=98.5 if report_type == ReportType.TP else 45.0,
+            anomaly_score=0.92 if report_type == ReportType.TP else 0.15,
+            current_vs_expected=(
+                "4.5x above" if report_type == ReportType.TP else "within baseline"
+            ),
         ),
     )
 
@@ -643,371 +526,179 @@ def create_full_triage_report(signal: Signal, is_true_positive: bool = True) -> 
         enabled=True,
         bucket_minutes=60,
         seasonality=ForecastSeasonality(mode="auto", season_length_buckets=24),
-        tracks=ForecastTracks(rule=track_a, ioc=track_b, entity=track_c),
+        tracks=ForecastTracks(rule=track_a, ioc=None, entity=None),
     )
 
-    # =========================================================================
-    # ENRICHMENT BUNDLE (r.enrich) - Sections 4, 5, 6, 8
-    # =========================================================================
-    enrichment_bundle = EnrichmentBundle(
-        # Section 4: Correlation summary
-        correlation_summary=(
-            "Alert correlates with 3 TI hits, 2 prior sightings of IOC, and 1 confirmed similar case. "
-            "Scope appears limited to single host but lateral movement indicators present."
-        ),
-        # Section 4.1: Local sightings
-        local_sightings=[
-            LocalSighting(
-                match_type="exact",
-                where_seen="DNS logs",
-                count=47,
-                time_window="last 24h",
-                notes="First seen 6 hours ago, accelerating pattern",
-            ),
-            LocalSighting(
-                match_type="exact",
-                where_seen="Proxy logs",
-                count=23,
-                time_window="last 24h",
-                notes="HTTPS connections to suspicious-domain.com",
-            ),
-            LocalSighting(
-                match_type="partial",
-                where_seen="EDR telemetry",
-                count=5,
-                time_window="last 12h",
-                notes="Related process hashes seen on 2 other hosts",
-            ),
-        ],
-        # Section 4.2: Scope assessment
-        scope=ScopeAssessment(
-            impacted_hosts=["WORKSTATION-042", "WORKSTATION-089", "SERVER-DC01"],
-            impacted_users=["jsmith", "admin_svc"],
-            impacted_segments=["CORP-WORKSTATIONS", "CORP-SERVERS"],
-            spread_assessment="limited",
-        ),
-        # Section 5: Threat intelligence per indicator
-        threat_intel={
-            "10.0.0.5": ThreatIntelEntry(
+    # Enrichment bundle
+    if report_type == ReportType.TP:
+        threat_intel = {
+            "203.0.113.50": ThreatIntelEntry(
                 type="ip",
                 reputation="malicious",
                 confidence="high",
-                source="VirusTotal, AbuseIPDB, OTX",
-                notes="Known C2 infrastructure, linked to APT29 campaigns",
+                source="AbuseIPDB, OTX",
+                notes="Known C2 infrastructure",
             ),
-            "suspicious-domain.com": ThreatIntelEntry(
+            "evil-c2-server.com": ThreatIntelEntry(
                 type="domain",
                 reputation="malicious",
                 confidence="high",
                 source="VirusTotal, Mandiant",
-                notes="Domain registered 5 days ago, DGA pattern detected",
+                notes="DGA domain, 3 days old",
             ),
-            "abc123def456789012345678901234567890abcdef": ThreatIntelEntry(
-                type="hash",
-                reputation="malicious",
-                confidence="medium",
-                source="VirusTotal, Hybrid Analysis",
-                notes="Identified as Cobalt Strike loader, 42/72 detections",
+        }
+        ti_summary = "2/2 indicators flagged malicious with high confidence."
+    else:
+        threat_intel = {
+            "203.0.113.50": ThreatIntelEntry(
+                type="ip",
+                reputation="clean",
+                confidence="high",
+                source="VirusTotal",
+                notes="CDN endpoint, no malicious reports",
             ),
-        },
-        ti_summary=(
-            "3/3 indicators flagged malicious with high confidence. "
-            "Strong correlation with known APT29 infrastructure and Cobalt Strike tooling."
+        }
+        ti_summary = "No malicious indicators detected."
+
+    enrichment_bundle = EnrichmentBundle(
+        correlation_summary="IOC correlation analysis complete.",
+        local_sightings=[
+            LocalSighting(
+                match_type="exact", where_seen="DNS logs", count=12, time_window="24h"
+            ),
+        ],
+        scope=ScopeAssessment(
+            impacted_hosts=[
+                h
+                for h in [
+                    signal.entity_context.hostname if signal.entity_context else None
+                ]
+                if h
+            ],
+            impacted_users=[
+                u
+                for u in [
+                    signal.entity_context.username if signal.entity_context else None
+                ]
+                if u
+            ],
+            spread_assessment=(
+                "contained" if report_type != ReportType.TP else "investigating"
+            ),
         ),
-        # Section 6.1: Asset context
+        threat_intel=threat_intel,
+        ti_summary=ti_summary,
         asset_context=AssetContext(
             host=HostContext(
-                hostname="WORKSTATION-042",
-                os="Windows 11 Enterprise 23H2",
+                hostname=(
+                    signal.entity_context.hostname
+                    if signal.entity_context and signal.entity_context.hostname
+                    else "UNKNOWN"
+                ),
+                os="Windows 11",
                 criticality="medium",
                 business_unit="Engineering",
-                owner="John Smith",
-                segment="CORP-WORKSTATIONS",
-                business_process="Software Development",
-                compliance="SOC2, GDPR (developer access)",
-            ),
-            user=UserContext(
-                username="jsmith",
-                role="Senior Developer",
-                department="Engineering",
-                risk_score=0.35,
             ),
         ),
-        # Section 6.2: Host vulnerabilities
-        host_vulns=[
-            HostVulnerability(
-                asset="WORKSTATION-042",
-                cve="CVE-2024-1234",
-                severity="high",
-                exploited_in_the_wild=True,
-                notes="PowerShell AMSI bypass, patch pending",
-            ),
-            HostVulnerability(
-                asset="WORKSTATION-042",
-                cve="CVE-2023-9876",
-                severity="medium",
-                exploited_in_the_wild=False,
-                notes="Print spooler vulnerability, mitigated by policy",
-            ),
-        ],
-        # Section 6.3: Environment exposure
+        host_vulns=[],
         env_exposure=EnvironmentExposure(
-            vulnerable_assets_count=127,
-            highest_exposure_severity="high",
-            known_exploited_exposure=True,
-            summary="CVE-2024-1234 affects 127 Windows workstations; 15 are internet-facing",
-            sample_assets=[
-                "WORKSTATION-042",
-                "WORKSTATION-089",
-                "WORKSTATION-156",
-                "LAPTOP-234",
-            ],
+            vulnerable_assets_count=0,
+            highest_exposure_severity="low",
+            known_exploited_exposure=False,
+            summary="No critical exposures detected.",
         ),
-        # Section 8: Related events timeline
         related_events=[
             RelatedEvent(
-                timestamp_utc=(now - timedelta(hours=6, minutes=15)).isoformat() + "Z",
-                source="DNS",
-                summary="First DNS query to suspicious-domain.com from WORKSTATION-042",
-                relevance="Initial contact with C2 infrastructure",
-            ),
-            RelatedEvent(
-                timestamp_utc=(now - timedelta(hours=5, minutes=45)).isoformat() + "Z",
-                source="Proxy",
-                summary="HTTPS POST to suspicious-domain.com/beacon (4.2KB payload)",
-                relevance="Likely Cobalt Strike beacon check-in",
-            ),
-            RelatedEvent(
-                timestamp_utc=(now - timedelta(hours=4, minutes=30)).isoformat() + "Z",
-                source="EDR",
-                summary="explorer.exe spawned powershell.exe with encoded args",
-                relevance="Primary detection event (this alert)",
-            ),
-            RelatedEvent(
-                timestamp_utc=(now - timedelta(hours=3, minutes=15)).isoformat() + "Z",
-                source="EDR",
-                summary="powershell.exe accessed lsass.exe memory (Mimikatz pattern)",
-                relevance="Credential dumping attempt detected",
-            ),
-            RelatedEvent(
-                timestamp_utc=(now - timedelta(hours=2, minutes=45)).isoformat() + "Z",
-                source="AD",
-                summary="jsmith account used for RDP to SERVER-DC01 (unusual)",
-                relevance="Potential lateral movement attempt",
-            ),
-            RelatedEvent(
-                timestamp_utc=(now - timedelta(hours=1, minutes=30)).isoformat() + "Z",
-                source="Network",
-                summary="SMB connection from WORKSTATION-042 to WORKSTATION-089",
-                relevance="Lateral movement confirmed to additional host",
+                timestamp_utc=(now - timedelta(hours=1)).isoformat() + "Z",
+                source="SIEM",
+                summary=f"IOC alert triggered for {signal.title}",
+                relevance="Primary detection event",
             ),
         ],
-        timeline_interpretation=(
-            "Clear attack chain: Initial C2 contact -> Beacon deployment -> Credential harvesting -> "
-            "Lateral movement. Timeline shows 6-hour progression from initial compromise."
-        ),
-        # Section 13: Data quality notes
-        notes=EnrichmentNotes(
-            data_gaps=[
-                "Cloud SaaS logs (M365, Okta) not yet integrated - user cloud activity unknown",
-                "EDR telemetry for SERVER-DC01 delayed by 15 minutes",
-                "Email gateway logs unavailable (phishing initial vector not confirmed)",
-            ],
-            assumptions=[
-                "Assuming initial access via phishing based on pattern similarity to CASE-2024-0892",
-                "Lateral movement scope may be underestimated pending full EDR sync",
-                "User account not yet confirmed as compromised (could be legitimate + malware)",
-            ],
-        ),
+        notes=EnrichmentNotes(data_gaps=[], assumptions=[]),
     )
 
-    # =========================================================================
-    # SIMILAR CASES (r.similar_cases) - Section 10
-    # =========================================================================
+    # Similar cases
     similar_cases = [
         SimilarCase(
             case_id="CASE-2024-0892",
             created_at_utc=(now - timedelta(days=12)).isoformat() + "Z",
-            disposition="TRUE_POSITIVE",
-            overlap="Same IOC (suspicious-domain.com) + Cobalt Strike pattern + Credential dumping",
-            actions_taken=[
-                "Isolated affected hosts via EDR",
-                "Reset credentials for compromised accounts",
-                "Blocked IOCs at firewall and proxy",
-                "Forensic image captured for investigation",
-                "Engaged IR team for full compromise assessment",
-            ],
-            notes_summary=(
-                "Confirmed Cobalt Strike compromise via phishing. Full remediation took 72 hours. "
-                "Root cause: user clicked malicious attachment in spoofed HR email."
+            disposition=(
+                "TRUE_POSITIVE" if report_type == ReportType.TP else "FALSE_POSITIVE"
             ),
-            similarity=0.92,
+            overlap="Similar IOC pattern",
+            actions_taken=["IOC blocking", "Host isolation"],
+            similarity=0.88,
             signal_type="SIEM_ALERT",
-            title="Encoded PowerShell with C2 Beacon Detected",
-            outcome="TP",
-            matched_entities=["domain:suspicious-domain.com", "technique:T1059.001"],
-            notes="Very similar attack pattern. Runbook RB-MAL-003 was effective.",
-            runbook_refs=[
-                RunbookRef(
-                    ref_id="RB-MAL-003",
-                    ref_type="runbook",
-                    source="soar",
-                    title="Malware/Cobalt Strike Response Runbook",
-                    url="https://wiki.example.com/runbooks/RB-MAL-003",
-                    whitelisted=True,
-                ),
-                RunbookRef(
-                    ref_id="PB-CONTAIN-001",
-                    ref_type="playbook",
-                    source="soar",
-                    title="Host Containment Playbook",
-                    url="https://wiki.example.com/playbooks/PB-CONTAIN-001",
-                ),
-            ],
-            tasks_template_id="TMPL-COBALT-001",
-            attachments_metadata=[
-                AttachmentMetadata(
-                    attachment_id="ATT-2024-0892-001",
-                    filename="forensic_timeline.md",
-                    content_type="text/markdown",
-                    size_bytes=45678,
-                    uploaded_at=(now - timedelta(days=10)).isoformat() + "Z",
-                    is_playbook=False,
-                ),
-            ],
-        ),
-        SimilarCase(
-            case_id="CASE-2024-0756",
-            created_at_utc=(now - timedelta(days=28)).isoformat() + "Z",
-            disposition="TRUE_POSITIVE",
-            overlap="Cobalt Strike beacon + Lateral movement pattern",
-            actions_taken=[
-                "EDR containment of affected hosts",
-                "Password reset for affected accounts",
-                "IOC blocking across perimeter",
-            ],
-            notes_summary="Different domain but same TTP. Contained within 24 hours.",
-            similarity=0.78,
-            signal_type="EDR_DETECTION",
-            title="Suspicious Process Injection Detected",
-            outcome="TP",
-            matched_entities=["technique:T1055", "technique:T1003.001"],
-            runbook_refs=[
-                RunbookRef(
-                    ref_id="RB-MAL-003",
-                    ref_type="runbook",
-                    source="soar",
-                    title="Malware/Cobalt Strike Response Runbook",
-                ),
-            ],
-        ),
-        SimilarCase(
-            case_id="CASE-2024-0634",
-            created_at_utc=(now - timedelta(days=45)).isoformat() + "Z",
-            disposition="FALSE_POSITIVE",
-            overlap="Encoded PowerShell + Developer workstation",
-            actions_taken=[
-                "Verified script was legitimate build tool",
-                "Added exclusion to detection rule",
-            ],
-            notes_summary="Developer using encoded scripts for CI/CD. Added to allowlist.",
-            similarity=0.65,
-            signal_type="SIEM_ALERT",
-            title="Encoded PowerShell on Developer Workstation",
-            outcome="FP",
-            matched_entities=[
-                "hostname_type:developer_workstation",
-                "technique:T1059.001",
-            ],
-            notes="Different context - legitimate automation. Good comparison for FP decision.",
+            title="Similar IOC Detection",
+            outcome="TP" if report_type == ReportType.TP else "FP",
+            matched_entities=["ioc:hash", "ioc:domain"],
         ),
     ]
 
-    # =========================================================================
-    # RECOMMENDATIONS (r.recommendations) - Section 2
-    # =========================================================================
-    recommendations = [
-        Recommendation(
-            priority=1,
-            description="IMMEDIATE: Isolate WORKSTATION-042 via EDR network containment",
-            owner_team="SOC",
-            auto_executable=True,
-            status="In Progress",
-            rationale="Confirmed C2 activity and credential theft - prevent further lateral movement",
-        ),
-        Recommendation(
-            priority=1,
-            description="IMMEDIATE: Reset credentials for jsmith and admin_svc accounts",
-            owner_team="IAM",
-            auto_executable=False,
-            status="Open",
-            rationale="Mimikatz activity detected - assume credentials compromised",
-        ),
-        Recommendation(
-            priority=2,
-            description="Block IOCs (suspicious-domain.com, 10.0.0.5) at firewall and proxy",
-            owner_team="NetSec",
-            auto_executable=True,
-            status="Open",
-            rationale="Prevent C2 communication from other potentially affected hosts",
-        ),
-        Recommendation(
-            priority=2,
-            description="Investigate WORKSTATION-089 and SERVER-DC01 for compromise",
-            owner_team="SOC",
-            auto_executable=False,
-            status="Open",
-            rationale="Lateral movement indicators present - timeline shows SMB/RDP connections",
-        ),
-        Recommendation(
-            priority=3,
-            description="Capture forensic image of WORKSTATION-042 for IR investigation",
-            owner_team="IR",
-            auto_executable=False,
-            status="Open",
-            rationale="Preserve evidence for root cause analysis and potential legal action",
-        ),
-        Recommendation(
-            priority=3,
-            description="Review phishing logs for jsmith to identify initial access vector",
-            owner_team="Email Security",
-            auto_executable=False,
-            status="Open",
-            rationale="Similar case CASE-2024-0892 was phishing-originated",
-        ),
-        Recommendation(
-            priority=4,
-            description="Deploy CVE-2024-1234 patch to remaining 126 affected workstations",
-            owner_team="IT Ops",
-            auto_executable=False,
-            status="Open",
-            rationale="AMSI bypass vulnerability may have facilitated attack persistence",
-        ),
-    ]
+    # Recommendations based on report type
+    if report_type == ReportType.TP:
+        recommendations = [
+            Recommendation(
+                priority=1,
+                description="Block IOCs at perimeter",
+                owner_team="NetSec",
+                auto_executable=True,
+            ),
+            Recommendation(
+                priority=1,
+                description="Isolate affected host",
+                owner_team="SOC",
+                auto_executable=True,
+            ),
+            Recommendation(
+                priority=2,
+                description="Investigate for lateral movement",
+                owner_team="SOC",
+            ),
+            Recommendation(
+                priority=3, description="Capture forensic image", owner_team="IR"
+            ),
+        ]
+    elif report_type == ReportType.FP:
+        recommendations = [
+            Recommendation(
+                priority=3, description="Add to allowlist", owner_team="SOC"
+            ),
+            Recommendation(
+                priority=4,
+                description="Tune detection rule",
+                owner_team="Detection Engineering",
+            ),
+        ]
+    else:
+        recommendations = [
+            Recommendation(
+                priority=4,
+                description="No action required - benign activity",
+                owner_team="SOC",
+            ),
+            Recommendation(
+                priority=4,
+                description="Consider rule threshold adjustment",
+                owner_team="Detection Engineering",
+            ),
+        ]
 
-    # =========================================================================
-    # EXECUTIVE SUMMARY (r.exec) - Section 12
-    # =========================================================================
-    executive_summary = ExecutiveSummary(
-        business_process="Software Development - Engineering Team",
-        potential_impact=(
-            "HIGH IMPACT: Credential theft detected on developer workstation with access to source code "
-            "repositories and internal systems. Potential for IP theft, supply chain compromise, or "
-            "further lateral movement to production systems."
-        ),
-        external_impact=(
-            "POTENTIAL: If attacker gained access to source code or CI/CD pipelines, customer-facing "
-            "products could be compromised. No evidence of this yet, but investigation ongoing."
-        ),
-        compliance_notes=(
-            "SOC2/GDPR implications: Developer account has access to customer data processing systems. "
-            "May require breach notification if data access confirmed. Legal and Privacy teams notified."
-        ),
-    )
+    # Executive summary
+    if report_type == ReportType.TP:
+        exec_summary = ExecutiveSummary(
+            business_process="Security Operations",
+            potential_impact="HIGH: Confirmed malicious IOC indicators detected",
+            external_impact="Potential C2 communication detected - immediate response required",
+        )
+    else:
+        exec_summary = ExecutiveSummary(
+            business_process="Security Operations",
+            potential_impact="NONE: Benign/false positive activity",
+            external_impact="No external impact",
+        )
 
-    # =========================================================================
-    # ASSEMBLE COMPLETE TRIAGE REPORT
-    # =========================================================================
     return TriageReport(
         signal=normalized_signal,
         meta=report_meta,
@@ -1017,28 +708,41 @@ def create_full_triage_report(signal: Signal, is_true_positive: bool = True) -> 
         enrich=enrichment_bundle,
         similar_cases=similar_cases,
         recommendations=recommendations,
-        exec=executive_summary,
+        exec=exec_summary,
     )
 
 
-# NOTE: AI overlay creation has been moved to AIService.create_mock_overlay()
-# The demo now uses AIService for both real AI and mock overlay generation
-
-
-async def run_demo(is_true_positive: bool = True):
-    """Execute the full triage demo showing ALL services in the pipeline.
+async def run_demo(report_type: str, input_file: str):
+    """Execute the full triage demo with proper phase enumeration.
 
     Args:
-        is_true_positive: If True, generate a True Positive report. If False, generate a False Positive report.
+        report_type: One of 'tp', 'fp', 'benign'
+        input_file: Path to SOAR container JSON file
     """
-    # Display the SOC Agent banner
-    report_type = "True Positive" if is_true_positive else "False Positive"
-    show_banner(subtitle=f"Full Pipeline Demo ({report_type} Report)")
+    # Display banner
+    type_labels = {
+        ReportType.TP: "True Positive",
+        ReportType.FP: "False Positive",
+        ReportType.BENIGN: "Benign",
+    }
+    show_banner(
+        subtitle=f"Pipeline Demo - {type_labels.get(report_type, 'Unknown')} Report"
+    )
 
+    print(f"  {c('▸', Colors.TEAL)} {c('Input:', Colors.WHITE)} {input_file}")
     print(
-        f"  {c('▸', Colors.TEAL)} {c('Service Pipeline Execution', Colors.BOLD + Colors.WHITE)}"
+        f"  {c('▸', Colors.TEAL)} {c('Report Type:', Colors.WHITE)} {report_type.upper()}"
     )
     print(c("─" * 70, Colors.DIM))
+
+    # Load SOAR container
+    print(f"\n{c('Loading SOAR Container...', Colors.YELLOW)}")
+    container = load_soar_container(input_file)
+    signal = create_signal_from_soar_container(container, report_type)
+    print(f"  {c('✓', Colors.GREEN)} Loaded signal: {signal.signal_id}")
+    print(
+        f"  {c('✓', Colors.GREEN)} Signal subtype will be detected as: {c('ioc', Colors.CYAN)} (from tags)"
+    )
 
     # =========================================================================
     # SERVICE INVENTORY
@@ -1046,673 +750,324 @@ async def run_demo(is_true_positive: bool = True):
     print(f"\n{c('━' * 70, Colors.MAGENTA)}")
     print(f"{c('SOC TRIAGE BOT - SERVICE INVENTORY', Colors.BOLD + Colors.MAGENTA)}")
     print(f"{c('━' * 70, Colors.MAGENTA)}")
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('│', Colors.DIM)} {c('Adapters (Data Sources):', Colors.YELLOW)}")
-    print(
-        f"{c('│', Colors.DIM)}   • {c('SIEMAdapter', Colors.WHITE)}          - SIEM alert ingestion & correlation"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('ThreatIntelAdapter', Colors.WHITE)}   - VirusTotal, OTX, AbuseIPDB"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('CMDBAdapter', Colors.WHITE)}          - Asset context & ownership"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('EDRAdapter', Colors.WHITE)}           - Endpoint telemetry"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('VulnerabilityAdapter', Colors.WHITE)} - CVE/vulnerability data"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('MockHistoricalAdapter', Colors.WHITE)} - Historical time series (demo mode)"
-    )
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('│', Colors.DIM)} {c('Core Services:', Colors.YELLOW)}")
-    print(
-        f"{c('│', Colors.DIM)}   • {c('TriageService', Colors.WHITE)}        - Main orchestrator"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('EnrichmentService', Colors.WHITE)}    - Multi-source enrichment"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('ClassificationService', Colors.WHITE)} - TP/FP scoring engine"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('ForecastingService', Colors.WHITE)}   - Multi-track ETS analysis"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('SimilarityService', Colors.WHITE)}    - Vector search for cases"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('CaseArtifactHarvester', Colors.WHITE)} - Extract SOAR artifacts"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('ActionProposalService', Colors.WHITE)} - Generate recommendations"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('RunbookRegistry', Colors.WHITE)}      - Match playbooks/runbooks"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('AIService', Colors.WHITE)}            - LLM overlay generation"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('HistoricalDataService', Colors.WHITE)} - Auto-fetch historical data"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • {c('ReportService', Colors.WHITE)}        - Jinja2 markdown render"
-    )
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('└─', Colors.DIM)} {c('11 services ready', Colors.GREEN)}")
+    print("│")
+    print("│ Adapters (Data Sources):")
+    print("│   • SIEMAdapter          - SIEM alert ingestion & correlation")
+    print("│   • ThreatIntelAdapter   - VirusTotal, OTX, AbuseIPDB")
+    print("│   • CMDBAdapter          - Asset context & ownership")
+    print("│   • EDRAdapter           - Endpoint telemetry")
+    print("│   • VulnerabilityAdapter - CVE/vulnerability data")
+    print("│")
+    print("│ Core Services:")
+    print("│   • CaseBootstrapService    - Graph + case ID initialization")
+    print("│   • CanonicalizeService     - Entity extraction and normalization")
+    print("│   • SourceHydratorService   - Signal hydration from SOAR/SIEM")
+    print("│   • EnrichmentService       - Multi-source enrichment")
+    print("│   • HistoricalDataService   - Time series fetch (MANDATORY)")
+    print("│   • ForecastingService      - Multi-track ETS analysis")
+    print("│   • CaseContextLinkingService - Similar case retrieval + harvest")
+    print("│   • ClassificationService   - TP/FP scoring engine")
+    print("│   • RunbookRegistry         - Match playbooks/runbooks")
+    print("│   • ActionProposalService   - Generate recommendations (6 channels)")
+    print("│   • GovernanceGate          - Action safety evaluation")
+    print("│   • AIService               - LLM overlay generation (OPTIONAL)")
+    print("│   • ReportService           - Jinja2 markdown render")
+    print("│")
+    print("└─ 13 services ready")
 
     # =========================================================================
-    # STAGE 1: SIGNAL INGESTION (SIEMAdapter)
+    # PHASE 1: Case Bootstrap
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 1: SIGNAL INGESTION', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('PHASE 1: CASE BOOTSTRAP', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} adapters/{c('SIEMAdapter', Colors.WHITE + Colors.BOLD)}"
-    )
-    print(f"{c('│', Colors.DIM)} Ingesting raw alert from Splunk...")
-
-    signal = create_sample_signal()
-
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('│', Colors.DIM)} {c('Signal Parsed:', Colors.YELLOW)}")
-    print(f"{c('│', Colors.DIM)}   • ID: {c(signal.signal_id, Colors.WHITE)}")
-    print(
-        f"{c('│', Colors.DIM)}   • Type: {c(signal.signal_type.value.upper(), Colors.YELLOW)}"
-    )
-    print(f"{c('│', Colors.DIM)}   • Source: {c(signal.source.system, Colors.WHITE)}")
-    print(
-        f"{c('│', Colors.DIM)}   • Rule: {c(signal.source.rule_name or 'N/A', Colors.WHITE)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   • Severity: {c(signal.severity.upper(), Colors.RED)}"
-    )
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('└─', Colors.DIM)} {c('✓ SIEMAdapter.ingest() complete', Colors.GREEN)}")
+    print("│ Service: CaseBootstrapService")
+    print("│ Initializing case graph and generating deterministic case ID...")
+    print("│")
+    print("│ → CaseBootstrapService.bootstrap(signal, mode=MIN_DELTA)")
+    print("│   • Creates TriageContextGraph with CaseNode and SignalNode")
+    print("│   • _generate_case_id() → Deterministic hash from signal metadata")
+    print("│   • Establishes case-signal relationship in graph")
+    await asyncio.sleep(0.1)
+    print("│")
+    print(f"└─ {c('✓', Colors.GREEN)} CaseBootstrapService.bootstrap() complete")
+    print(f"   Case ID: {c(signal.signal_id, Colors.YELLOW)}")
 
     # =========================================================================
-    # STAGE 2: ENRICHMENT (EnrichmentService + Adapters)
+    # PHASE 1.5: Canonicalization
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 2: ENRICHMENT', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('PHASE 1.5: ENTITY CANONICALIZATION', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
+    print("│ Service: CanonicalizeService")
+    print("│ Extracting and normalizing entities from signal...")
+    print("│")
+    print("│ → CanonicalizeService.canonicalize_entities(signal, graph)")
+    print("│   • _extract_entities_from_signal() → Parse hostname, user, IPs")
+    print("│   • _normalize_entity_value() → Lowercase, trim, dedupe")
+    print("│   • _write_entities_to_graph() → Create entity nodes")
+    await asyncio.sleep(0.1)
+    entity_count = sum(len(v) for v in signal.entities.values())
+    print("│")
     print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('EnrichmentService', Colors.WHITE + Colors.BOLD)}"
+        f"└─ {c('✓', Colors.GREEN)} CanonicalizeService.canonicalize_entities() complete"
     )
-    print(f"{c('│', Colors.DIM)} Orchestrating multi-source enrichment...")
-    print(f"{c('│', Colors.DIM)}")
-
-    # 2a. Threat Intel
-    print(f"{c('│', Colors.DIM)} {c('→ ThreatIntelAdapter.lookup()', Colors.YELLOW)}")
-    await asyncio.sleep(0.2)
-    print(
-        f"{c('│', Colors.DIM)}   IP 10.0.0.5: {c('MALICIOUS', Colors.RED)} (VT 48/92, AbuseIPDB 100%)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   Domain: {c('MALICIOUS', Colors.RED)} (DGA pattern, 5d old)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   Hash: {c('MALICIOUS', Colors.RED)} (Cobalt Strike, 42/72)"
-    )
-
-    # 2b. CMDB
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('→ CMDBAdapter.get_asset_context()', Colors.YELLOW)}"
-    )
-    await asyncio.sleep(0.15)
-    print(
-        f"{c('│', Colors.DIM)}   Host: WORKSTATION-042 | Owner: jsmith | Criticality: MEDIUM"
-    )
-
-    # 2c. Vulnerability
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('→ VulnerabilityAdapter.get_host_vulns()', Colors.YELLOW)}"
-    )
-    await asyncio.sleep(0.15)
-    print(
-        f"{c('│', Colors.DIM)}   {c('CVE-2024-1234', Colors.RED)}: AMSI Bypass (HIGH, exploited)"
-    )
-    print(f"{c('│', Colors.DIM)}   CVE-2023-9876: Print Spooler (MEDIUM)")
-
-    # 2d. EDR
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('│', Colors.DIM)} {c('→ EDRAdapter.get_telemetry()', Colors.YELLOW)}")
-    await asyncio.sleep(0.15)
-    print(f"{c('│', Colors.DIM)}   Process: explorer.exe → powershell.exe -enc ...")
-    print(
-        f"{c('│', Colors.DIM)}   {c('lsass.exe access detected', Colors.RED)} (Mimikatz pattern)"
-    )
-
-    # 2e. SIEM Correlation
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('│', Colors.DIM)} {c('→ SIEMAdapter.correlate()', Colors.YELLOW)}")
-    await asyncio.sleep(0.15)
-    print(f"{c('│', Colors.DIM)}   47 DNS queries to C2 domain (last 24h)")
-    print(f"{c('│', Colors.DIM)}   3 hosts involved in lateral movement")
-
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ EnrichmentService.enrich() complete', Colors.GREEN)}"
-    )
-
-    # Build the triage report with all enriched data
-    triage_report = create_full_triage_report(signal, is_true_positive)
+    print(f"   Extracted {c(str(entity_count), Colors.YELLOW)} canonical entities")
 
     # =========================================================================
-    # STAGE 3: HISTORICAL DATA FETCHING (HistoricalDataService)
+    # PHASE 2: Source Hydration
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 3: HISTORICAL DATA FETCHING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('PHASE 2: SOURCE HYDRATION', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} SourceHydratorService")
+    print(f"  {c('→', Colors.GREEN)} hydrate_if_needed(signal)")
     print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('HistoricalDataService', Colors.WHITE + Colors.BOLD)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)} {c('Adapter:', Colors.YELLOW)} adapters/{c('MockHistoricalAdapter', Colors.WHITE + Colors.BOLD)} (demo mode)"
-    )
-    print(f"{c('│', Colors.DIM)} Auto-fetching historical time series for forecasting...")
-    print(f"{c('│', Colors.DIM)}")
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ HistoricalDataService.fetch_for_signal()', Colors.YELLOW)}"
-    )
-    await asyncio.sleep(0.15)
-    print(f"{c('│', Colors.DIM)}   Signal type: SIEM_ALERT")
-    print(f"{c('│', Colors.DIM)}   History window: 7 days | Bucket size: 60 min")
-    print(f"{c('│', Colors.DIM)}")
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ MockHistoricalAdapter.query_time_series()', Colors.YELLOW)} Track A"
+        f"  {c('→', Colors.GREEN)} Signal has soar_id={signal.metadata.get('soar_id')} - hydrating from SOAR"
     )
     await asyncio.sleep(0.1)
-    print(f"{c('│', Colors.DIM)}   Entity: rule_id=RULE-PS-ENCODED-001")
-    print(f"{c('│', Colors.DIM)}   Generated: 168 data points with daily/weekly patterns")
+    print(f"  {c('✓', Colors.GREEN)} Signal hydrated with SOAR container data")
+
+    # =========================================================================
+    # PHASE 3: Enrichment
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('PHASE 3: ENRICHMENT', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} EnrichmentService + 5 Adapters")
+
+    adapters = [
+        ("SIEMAdapter", "SIEM correlation lookup"),
+        ("EDRAdapter", "Endpoint telemetry"),
+        ("ThreatIntelAdapter", "VirusTotal, OTX, AbuseIPDB"),
+        ("CMDBAdapter", "Asset context and ownership"),
+        ("VulnerabilityAdapter", "CVE/vulnerability data"),
+    ]
+
+    for adapter, desc in adapters:
+        print(f"  {c('→', Colors.GREEN)} {adapter}: {desc}")
+        await asyncio.sleep(0.05)
 
     print(
-        f"{c('│', Colors.DIM)} {c('→ MockHistoricalAdapter.query_time_series()', Colors.YELLOW)} Track B"
+        f"  {c('→', Colors.YELLOW)} Baseline cache extracted from SOAR artifacts (delta optimization)"
+    )
+    print(f"  {c('✓', Colors.GREEN)} All 5 adapters completed")
+
+    # =========================================================================
+    # PHASE 4: Historical Data Fetch
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('PHASE 4: HISTORICAL DATA FETCH', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"  {c('Service:', Colors.YELLOW)} HistoricalDataService {c('(MANDATORY for forecasting)', Colors.RED)}"
+    )
+    print(f"  {c('→', Colors.GREEN)} fetch_for_signal(signal)")
+    print(
+        f"  {c('→', Colors.GREEN)} MockHistoricalAdapter.query_time_series() for 3 tracks"
     )
     await asyncio.sleep(0.1)
-    print(f"{c('│', Colors.DIM)}   Entity: domain=suspicious-domain.com")
-    print(f"{c('│', Colors.DIM)}   Generated: 168 data points with IOC sighting patterns")
-
     print(
-        f"{c('│', Colors.DIM)} {c('→ MockHistoricalAdapter.query_time_series()', Colors.YELLOW)} Track C"
-    )
-    await asyncio.sleep(0.1)
-    print(f"{c('│', Colors.DIM)}   Entity: hostname=WORKSTATION-042")
-    print(f"{c('│', Colors.DIM)}   Generated: 168 data points with entity behavior patterns")
-
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('│', Colors.DIM)}   {c('MultiTrackHistoricalData:', Colors.GREEN)} 3 tracks × 168 points"
-    )
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ HistoricalDataService.fetch_for_signal() complete', Colors.GREEN)}"
+        f"  {c('✓', Colors.GREEN)} MultiTrackHistoricalData: 3 tracks × 168 data points"
     )
 
     # =========================================================================
-    # STAGE 4: FORECASTING (ForecastingService)
+    # PHASE 5: Forecasting
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 4: FORECASTING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('PHASE 5: FORECASTING', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} ForecastingService")
     print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ForecastingService', Colors.WHITE + Colors.BOLD)}"
-    )
-    print(f"{c('│', Colors.DIM)} Running multi-track ETS models...")
-    print(f"{c('│', Colors.DIM)}")
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ ForecastingService.forecast_track()', Colors.YELLOW)} Track A (Rule)"
-    )
-    await asyncio.sleep(0.15)
-    print(
-        f"{c('│', Colors.DIM)}   Model: ETS(A,Ad,N) | Status: {c('🔴 SPIKE 5.2x', Colors.RED)}"
+        f"  {c('→', Colors.GREEN)} forecast_multi_track_ckg(signal, historical_data, graph)"
     )
 
-    print(
-        f"{c('│', Colors.DIM)} {c('→ ForecastingService.forecast_track()', Colors.YELLOW)} Track B (IOC)"
-    )
-    await asyncio.sleep(0.15)
-    print(
-        f"{c('│', Colors.DIM)}   Model: ETS(A,N,N) | Status: {c('🟠 ELEVATED 2.8x', Colors.YELLOW)}"
-    )
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ ForecastingService.forecast_track()', Colors.YELLOW)} Track C (Entity)"
-    )
-    await asyncio.sleep(0.15)
-    print(
-        f"{c('│', Colors.DIM)}   Model: ETS(A,Ad,A) | Status: {c('🔴 SPIKE 4.1x', Colors.RED)}"
-    )
-
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('Cross-Track:', Colors.RED + Colors.BOLD)} Triple-spike (95% TP correlation)"
-    )
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ ForecastingService.run_all_tracks() complete', Colors.GREEN)}"
-    )
-
-    # =========================================================================
-    # STAGE 5: SIMILARITY SEARCH (SimilarityService)
-    # =========================================================================
-    print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 5: SIMILAR CASE RETRIEVAL', Colors.BOLD + Colors.CYAN)}")
-    print(f"{c('━' * 70, Colors.CYAN)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('SimilarityService', Colors.WHITE + Colors.BOLD)}"
-    )
-    print(f"{c('│', Colors.DIM)} Vector search over historical cases...")
-    print(f"{c('│', Colors.DIM)}")
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ SimilarityService.find_similar()', Colors.YELLOW)}"
-    )
-    await asyncio.sleep(0.2)
-    print(
-        f"{c('│', Colors.DIM)}   CASE-2024-0892: {c('92% match', Colors.GREEN)} (TP, same C2)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   CASE-2024-0756: {c('78% match', Colors.GREEN)} (TP, Cobalt Strike)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   CASE-2024-0634: {c('65% match', Colors.YELLOW)} (FP, dev tool)"
-    )
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ SimilarityService.find_similar() complete', Colors.GREEN)}"
-    )
-
-    # =========================================================================
-    # STAGE 6: CLASSIFICATION (ClassificationService)
-    # =========================================================================
-    # NOTE: Classification MUST happen before action proposal - we need to
-    # know TP/FP likelihood before recommending response actions
-    print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 6: CLASSIFICATION', Colors.BOLD + Colors.CYAN)}")
-    print(f"{c('━' * 70, Colors.CYAN)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ClassificationService', Colors.WHITE + Colors.BOLD)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)} Computing TP/FP likelihood from enrichments + forecast + similar cases..."
-    )
-    print(f"{c('│', Colors.DIM)}")
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ ClassificationService.classify_extended()', Colors.YELLOW)}"
-    )
-    await asyncio.sleep(0.15)
-    print(f"{c('│', Colors.DIM)}   Inputs: enrichments, similar_cases, forecast_bundle")
-    if is_true_positive:
-        print(
-            f"{c('│', Colors.DIM)}   TI Score: {c('+35%', Colors.GREEN)} | Pattern: {c('+25%', Colors.GREEN)}"
-        )
-        print(
-            f"{c('│', Colors.DIM)}   ETS: {c('+15%', Colors.GREEN)} | Similar: {c('+12%', Colors.GREEN)} | FP: {c('-13%', Colors.YELLOW)}"
-        )
-        print(f"{c('│', Colors.DIM)}")
-        print(f"{c('│', Colors.DIM)}   ┌──────────────────────────────────┐")
-        print(
-            f"{c('│', Colors.DIM)}   │  {c('TRUE POSITIVE', Colors.RED + Colors.BOLD)} @ {c('87%', Colors.WHITE)} likelihood │"
-        )
-        print(
-            f"{c('│', Colors.DIM)}   │  Severity: {c('HIGH', Colors.RED)} | Confidence: {c('HIGH', Colors.GREEN)} │"
-        )
-        print(f"{c('│', Colors.DIM)}   └──────────────────────────────────┘")
+    if report_type == ReportType.TP:
+        print(f"  {c('→', Colors.RED)} Track A (Rule): SPIKE 4.5x above expected")
     else:
-        print(
-            f"{c('│', Colors.DIM)}   TI Score: {c('-5%', Colors.YELLOW)} | Pattern: {c('-15%', Colors.YELLOW)}"
-        )
-        print(
-            f"{c('│', Colors.DIM)}   ETS: {c('-10%', Colors.YELLOW)} | Similar: {c('-25%', Colors.GREEN)} | FP: {c('+40%', Colors.GREEN)}"
-        )
-        print(f"{c('│', Colors.DIM)}")
-        print(f"{c('│', Colors.DIM)}   ┌───────────────────────────────────┐")
-        print(
-            f"{c('│', Colors.DIM)}   │  {c('FALSE POSITIVE', Colors.GREEN + Colors.BOLD)} @ {c('15%', Colors.WHITE)} TP likelihood │"
-        )
-        print(
-            f"{c('│', Colors.DIM)}   │  Severity: {c('LOW', Colors.GREEN)} | Confidence: {c('HIGH', Colors.GREEN)}  │"
-        )
-        print(f"{c('│', Colors.DIM)}   └───────────────────────────────────┘")
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ ClassificationService.classify_extended() complete', Colors.GREEN)}"
-    )
+        print(f"  {c('→', Colors.GREEN)} Track A (Rule): NORMAL within baseline")
+    await asyncio.sleep(0.1)
+    print(f"  {c('✓', Colors.GREEN)} ForecastBundle generated with ETS models")
 
     # =========================================================================
-    # STAGE 7: CASE ARTIFACT HARVESTING (CaseArtifactHarvester)
+    # PHASE 6: Case Context Linking
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 7: SOAR ARTIFACT HARVESTING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('PHASE 6: CASE CONTEXT LINKING', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('CaseArtifactHarvester', Colors.WHITE + Colors.BOLD)}"
+        f"  {c('Service:', Colors.YELLOW)} CaseContextLinkingService {c('(subtype-aware)', Colors.CYAN)}"
     )
-    print(f"{c('│', Colors.DIM)} Extracting proven actions from similar TP cases...")
-    print(f"{c('│', Colors.DIM)}")
-
+    print(f"  {c('→', Colors.GREEN)} retrieve_rank_hydrate(signal, graph)")
     print(
-        f"{c('│', Colors.DIM)} {c('→ CaseArtifactHarvester.harvest()', Colors.YELLOW)} CASE-2024-0892"
+        f"  {c('→', Colors.GREEN)} _find_similar_extended() - TF-IDF + entity matching"
     )
-    await asyncio.sleep(0.15)
+    print(f"  {c('→', Colors.GREEN)} _filter_with_graph_context(signal_subtype='ioc')")
     print(
-        f"{c('│', Colors.DIM)}   Extracted: EDR isolation, credential reset, IOC blocking"
+        f"  {c('→', Colors.YELLOW)} IOC subtype boost: +25% for IOC-related historical cases"
     )
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ CaseArtifactHarvester.harvest()', Colors.YELLOW)} CASE-2024-0756"
-    )
-    await asyncio.sleep(0.15)
-    print(f"{c('│', Colors.DIM)}   Extracted: Network containment, forensic imaging")
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ CaseArtifactHarvester.harvest_all() complete', Colors.GREEN)}"
-    )
+    await asyncio.sleep(0.1)
+    print(f"  {c('✓', Colors.GREEN)} Found 1 similar cases, harvested artifacts")
 
     # =========================================================================
-    # STAGE 8: ACTION PROPOSAL (ActionProposalService)
-    # =========================================================================
-    # NOTE: Actions are proposed AFTER classification - severity/TP likelihood
-    # determines urgency (P1 vs P4) and action scope
-    print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 8: ACTION PROPOSAL', Colors.BOLD + Colors.CYAN)}")
-    print(f"{c('━' * 70, Colors.CYAN)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ActionProposalService', Colors.WHITE + Colors.BOLD)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)} Generating prioritized recommendations based on classification..."
-    )
-    print(f"{c('│', Colors.DIM)}")
-
-    # Show 5 sources with precedence (new!)
-    print(f"{c('│', Colors.DIM)} {c('Sources (by precedence):', Colors.YELLOW)}")
-    print(
-        f"{c('│', Colors.DIM)}   {c('1. seeded', Colors.GREEN)}      → Governed runbooks/playbooks (YAML)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('2. case_linked', Colors.GREEN)} → SOAR archive (proven org intelligence)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('3. learned', Colors.YELLOW)}    → Pattern-matched from similar cases"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('4. contextual', Colors.YELLOW)} → Dynamic from enrichments"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('5. template', Colors.DIM)}   → Fallback signal-type defaults"
-    )
-    print(f"{c('│', Colors.DIM)}")
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ ActionProposalService.propose_actions()', Colors.YELLOW)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   Inputs: signal, classification, enrichments, similar_cases"
-    )
-    await asyncio.sleep(0.15)
-
-    # Show actions with their sources
-    print(f"{c('│', Colors.DIM)}")
-    print(f"{c('│', Colors.DIM)}   {c('Generated Actions:', Colors.WHITE)}")
-    print(
-        f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)} [seeded]      Isolate WORKSTATION-042 via EDR"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('P1', Colors.RED)} [case_linked] Reset jsmith credentials (from CASE-2024-0892)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)} [contextual]  Block IOCs at perimeter (TI: malicious)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('P2', Colors.YELLOW)} [learned]     Investigate lateral hosts (92% similar case)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('P3', Colors.GREEN)} [seeded]      Forensic imaging"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   {c('P4', Colors.DIM)} [template]    Patch CVE-2024-1234"
-    )
-    print(f"{c('│', Colors.DIM)}")
-
-    # Show deduplication and ranking
-    print(f"{c('│', Colors.DIM)}   {c('Enterprise Features:', Colors.CYAN)}")
-    print(
-        f"{c('│', Colors.DIM)}   → Dedupe by (intent|tool|owner|target) - 2 duplicates merged"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   → Gating: FP actions blocked, HIGH risk flagged for approval"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   → Ranking: source precedence > priority > confidence"
-    )
-    print(f"{c('│', Colors.DIM)}   → Capping: top 6, full plan max 15")
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ ActionProposalService.propose_actions() complete', Colors.GREEN)}"
-    )
-
-    # =========================================================================
-    # STAGE 9: RUNBOOK MATCHING (RunbookRegistry)
-    # =========================================================================
-    # NOTE: Runbooks matched after classification - threat type informs which
-    # playbooks are relevant
-    print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 9: RUNBOOK MATCHING', Colors.BOLD + Colors.CYAN)}")
-    print(f"{c('━' * 70, Colors.CYAN)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('RunbookRegistry', Colors.WHITE + Colors.BOLD)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)} Matching signal + classification to playbooks/runbooks..."
-    )
-    print(f"{c('│', Colors.DIM)}")
-
-    print(f"{c('│', Colors.DIM)} {c('→ RunbookRegistry.match()', Colors.YELLOW)}")
-    await asyncio.sleep(0.15)
-    print(
-        f"{c('│', Colors.DIM)}   Matched: {c('malware_containment.yaml', Colors.WHITE)} (Cobalt Strike)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   Matched: {c('phishing_response.yaml', Colors.WHITE)} (Initial access)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   Playbook: {c('ransomware_ir.yaml', Colors.WHITE)} (Lateral movement)"
-    )
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ RunbookRegistry.match() complete', Colors.GREEN)}"
-    )
-
-    # =========================================================================
-    # STAGE 10: AI OVERLAY (AIService)
+    # PHASE 7: Classification
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 10: AI OVERLAY GENERATION', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('PHASE 7: CLASSIFICATION', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
     print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('AIService', Colors.WHITE + Colors.BOLD)}"
+        f"  {c('Service:', Colors.YELLOW)} ClassificationService {c('(subtype-aware)', Colors.CYAN)}"
     )
-    print(f"{c('│', Colors.DIM)} Provider: MockProvider | Model: GPT-4o")
-    print(f"{c('│', Colors.DIM)}")
+    print(
+        f"  {c('→', Colors.GREEN)} classify_extended_ckg(signal, enrichments, similar_cases, forecast)"
+    )
+    print(
+        f"  {c('→', Colors.GREEN)} _generate_mitre_mapping(signal) - uses signal_subtype='ioc'"
+    )
+    print(
+        f"  {c('→', Colors.GREEN)} _determine_incident_type() - returns 'Indicator Match' for IOC"
+    )
+    await asyncio.sleep(0.1)
+
+    triage_report = create_full_triage_report(signal, report_type)
+
+    if report_type == ReportType.TP:
+        print(f"  {c('✓', Colors.RED)} Disposition: TRUE_POSITIVE @ 92% likelihood")
+    elif report_type == ReportType.FP:
+        print(
+            f"  {c('✓', Colors.GREEN)} Disposition: FALSE_POSITIVE @ 12% TP likelihood"
+        )
+    else:
+        print(f"  {c('✓', Colors.GREEN)} Disposition: BENIGN @ 5% TP likelihood")
+
+    # =========================================================================
+    # PHASE 8: Runbook Registry
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('PHASE 8: RUNBOOK MATCHING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} RunbookRegistry")
+    print(
+        f"  {c('→', Colors.GREEN)} fetch_applicable_runbooks(signal, classification, harvested_runbooks)"
+    )
+    print(
+        f"  {c('→', Colors.GREEN)} Merging registry + harvested runbooks (deduplication)"
+    )
+    await asyncio.sleep(0.1)
+    print(f"  {c('✓', Colors.GREEN)} Matched runbooks for signal subtype 'ioc'")
+
+    # =========================================================================
+    # PHASE 9: Action Proposal
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('PHASE 9: ACTION PROPOSAL', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} ActionProposalService (6 channels)")
+    print(
+        f"  {c('→', Colors.GREEN)} propose_actions_ckg(signal, classification, enrichments, ...)"
+    )
+    print(f"  {c('Channels:', Colors.YELLOW)}")
+    print("    1. seeded      → Governed runbooks/playbooks (YAML)")
+    print("    2. case_linked → SOAR archive (proven org intelligence)")
+    print("    3. learned     → Pattern-matched from similar cases")
+    print("    4. contextual  → Dynamic from enrichments")
+    print("    5. template    → Fallback signal-type defaults")
+    print("    6. ai          → LLM-generated suggestions")
+    await asyncio.sleep(0.1)
+    print(
+        f"  {c('✓', Colors.GREEN)} Generated {len(triage_report.recommendations)} recommendations"
+    )
+
+    # =========================================================================
+    # PHASE 10: Governance Gate
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('PHASE 10: GOVERNANCE GATE', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} GovernanceGate")
+    print(f"  {c('→', Colors.GREEN)} evaluate(actions, classification, enrichments)")
+    print(f"  {c('→', Colors.GREEN)} Returns: auto_execute, requires_approval, blocked")
+    await asyncio.sleep(0.1)
+    print(f"  {c('✓', Colors.GREEN)} Actions evaluated for safety")
+
+    # =========================================================================
+    # PHASE 11: AI Overlay (Optional)
+    # =========================================================================
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(
+        f"{c('PHASE 11: AI OVERLAY', Colors.BOLD + Colors.CYAN)} {c('(OPTIONAL)', Colors.YELLOW)}"
+    )
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} AIService")
+    print(f"  {c('→', Colors.GREEN)} generate_overlay(triage_report, signal)")
 
     ai_service = AIService.from_settings()
-
-    print(f"{c('│', Colors.DIM)} {c('→ AIService.generate_overlay()', Colors.YELLOW)}")
-    sections = [
-        "Decision Banner rationale",
-        "Executive summary (4 statements)",
-        "Next checks (3 queries)",
-        "Action rationale (evidence-backed)",
-        "Action prioritization reasoning",
-        "Additional action suggestions (4)",
-        "Action dependencies (3)",
-        "Action risks (3)",
-        "Evidence citations (E-001..E-005)",
-        "Trend interpretation",
-        "Timeline narrative",
-        "Scorecard explanation",
-        "Similar case narratives",
-        "Closure guidance",
-        "Business impact",
-        "Data quality observations",
-    ]
-    for s in sections:
-        await asyncio.sleep(0.08)
-        print(f"{c('│', Colors.DIM)}   {c('→', Colors.GREEN)} {s}")
-
     ai_overlay = ai_service.create_mock_overlay(
         triage_report=triage_report, signal=signal
     )
-
-    print(f"{c('│', Colors.DIM)}")
-    if is_true_positive:
-        print(
-            f"{c('│', Colors.DIM)}   AI Assessment: {c('LIKELY TRUE POSITIVE', Colors.RED)}"
-        )
-    else:
-        print(
-            f"{c('│', Colors.DIM)}   AI Assessment: {c('LIKELY FALSE POSITIVE', Colors.GREEN)}"
-        )
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ AIService.generate_overlay() complete', Colors.GREEN)}"
-    )
+    await asyncio.sleep(0.1)
+    print(f"  {c('✓', Colors.GREEN)} AI overlay generated (mock mode)")
 
     # =========================================================================
-    # STAGE 11: REPORT RENDERING (ReportService)
+    # PHASE 12: Report Rendering
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.CYAN)}")
-    print(f"{c('STAGE 11: REPORT RENDERING', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('PHASE 12: REPORT RENDERING', Colors.BOLD + Colors.CYAN)}")
     print(f"{c('━' * 70, Colors.CYAN)}")
+    print(f"  {c('Service:', Colors.YELLOW)} ReportService")
     print(
-        f"{c('│', Colors.DIM)} {c('Service:', Colors.YELLOW)} services/{c('ReportService', Colors.WHITE + Colors.BOLD)}"
+        f"  {c('→', Colors.GREEN)} generate_report(triage_report, ai_overlay, format='compact')"
     )
-    print(f"{c('│', Colors.DIM)} Template: triage_report.md.j2")
-    print(f"{c('│', Colors.DIM)}")
-
-    print(
-        f"{c('│', Colors.DIM)} {c('→ ReportService.generate_report()', Colors.YELLOW)}"
-    )
-    await asyncio.sleep(0.2)
+    print(f"  {c('→', Colors.GREEN)} Template: triage_report_compact.md.j2")
 
     report_service = ReportService()
     report = report_service.generate_report(triage_report, ai_overlay, format="compact")
-
-    print(f"{c('│', Colors.DIM)}   Rendered: Header + Decision Banner")
-    print(f"{c('│', Colors.DIM)}   Rendered: §1-§13 (all sections)")
-    print(f"{c('│', Colors.DIM)}   Rendered: Appendix (raw payload)")
-    print(f"{c('│', Colors.DIM)}")
+    await asyncio.sleep(0.1)
     print(
-        f"{c('│', Colors.DIM)}   Output: {c(str(len(report.splitlines())) + ' lines', Colors.WHITE)} of markdown"
-    )
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ ReportService.generate_report() complete', Colors.GREEN)}"
+        f"  {c('✓', Colors.GREEN)} Rendered {len(report.splitlines())} lines of markdown"
     )
 
     # =========================================================================
     # PIPELINE COMPLETE
     # =========================================================================
     print(f"\n{c('━' * 70, Colors.GREEN)}")
-    print(f"{c('PIPELINE COMPLETE', Colors.BOLD + Colors.GREEN)}")
+    print(
+        f"{c('PIPELINE COMPLETE - ALL 12 PHASES EXECUTED', Colors.BOLD + Colors.GREEN)}"
+    )
     print(f"{c('━' * 70, Colors.GREEN)}")
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('│', Colors.DIM)} {c('Services Invoked:', Colors.YELLOW)} 11 (in logical order)"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   1. SIEMAdapter.ingest()              → Signal ingestion"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   2. EnrichmentService.enrich()        → Context from 5 adapters"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   3. HistoricalDataService.fetch()     → Auto-fetch historical data"
-    )
-    print(
-        f"{c('│', Colors.DIM)}      {c('MockHistoricalAdapter (demo) / Real adapters (live)', Colors.DIM)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   4. ForecastingService.run_all_tracks()→ ETS anomaly detection"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   5. SimilarityService.find_similar()  → Historical case matching"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   6. ClassificationService.classify()  → TP/FP determination"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   7. CaseArtifactHarvester.harvest()   → Extract SOAR artifacts"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   8. ActionProposalService.propose()   → 5-source recommendations"
-    )
-    print(
-        f"{c('│', Colors.DIM)}      {c('seeded > case_linked > learned > contextual > template', Colors.DIM)}"
-    )
-    print(
-        f"{c('│', Colors.DIM)}   9. RunbookRegistry.match()           → Playbook selection"
-    )
-    print(
-        f"{c('│', Colors.DIM)}  10. AIService.generate_overlay()      → LLM enhancement"
-    )
-    print(
-        f"{c('│', Colors.DIM)}  11. ReportService.generate_report()   → Final markdown"
-    )
-    print(f"{c('│', Colors.DIM)}")
-    print(
-        f"{c('└─', Colors.DIM)} {c('✓ All services executed successfully', Colors.GREEN)}"
-    )
 
     # =========================================================================
     # SAVE OUTPUTS
     # =========================================================================
-    output_dir = Path(__file__).parent / "soc_triage_bot" / "output"
+    output_dir = Path(__file__).parent.parent / "soc_triage_bot" / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    report_path = output_dir / f"demo_report_{signal.signal_id}.md"
-    with open(report_path, "w") as f:
+    # Save compact report
+    report_filename = f"demo_report_{signal.signal_id}_{report_type}.md"
+    report_path = output_dir / report_filename
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
 
     # Save JSON summary
-    json_path = output_dir / f"demo_result_{signal.signal_id}.json"
+    json_filename = f"demo_result_{signal.signal_id}_{report_type}.json"
+    json_path = output_dir / json_filename
     summary = {
         "signal_id": signal.signal_id,
         "signal_type": signal.signal_type.value,
+        "signal_subtype": "ioc",  # Detected from content
+        "report_type": report_type,
         "timestamp": signal.timestamp.isoformat() if signal.timestamp else None,
+        "input_file": input_file,
         "classification": {
             "disposition": triage_report.classification.disposition,
             "tp_likelihood": triage_report.classification.tp_likelihood,
             "severity": triage_report.classification.severity,
             "confidence": triage_report.classification.confidence,
+            "incident_type": triage_report.classification.incident_type,
         },
         "forecast": {
             "enabled": triage_report.forecast.enabled,
             "bucket_minutes": triage_report.forecast.bucket_minutes,
-            "tracks": {
-                "rule": (
-                    triage_report.forecast.tracks.rule.interpretation
-                    if triage_report.forecast.tracks.rule
-                    else None
-                ),
-                "ioc": (
-                    triage_report.forecast.tracks.ioc.interpretation
-                    if triage_report.forecast.tracks.ioc
-                    else None
-                ),
-                "entity": (
-                    triage_report.forecast.tracks.entity.interpretation
-                    if triage_report.forecast.tracks.entity
-                    else None
-                ),
-            },
         },
         "similar_cases_count": len(triage_report.similar_cases),
         "recommendations_count": len(triage_report.recommendations),
@@ -1723,83 +1078,158 @@ async def run_demo(is_true_positive: bool = True):
                 if ai_overlay.tp_fp_likelihood
                 else None
             ),
-            "next_checks_count": len(ai_overlay.next_checks),
-            "action_rationale_length": len(ai_overlay.action_rationale),
-            "action_prioritization_reasoning_length": len(
-                ai_overlay.action_prioritization_reasoning
-            ),
-            "additional_action_suggestions_count": len(
-                ai_overlay.additional_action_suggestions
-            ),
-            "action_dependencies_count": len(ai_overlay.action_dependencies),
-            "action_risks_count": len(ai_overlay.action_risks),
         },
+        "pipeline_phases": [
+            "Phase 1: CaseBootstrapService",
+            "Phase 1.5: CanonicalizeService",
+            "Phase 2: SourceHydratorService",
+            "Phase 3: EnrichmentService",
+            "Phase 4: HistoricalDataService (MANDATORY)",
+            "Phase 5: ForecastingService",
+            "Phase 6: CaseContextLinkingService (subtype-aware)",
+            "Phase 7: ClassificationService (subtype-aware)",
+            "Phase 8: RunbookRegistry",
+            "Phase 9: ActionProposalService",
+            "Phase 10: GovernanceGate",
+            "Phase 11: AIService (OPTIONAL)",
+            "Phase 12: ReportService",
+        ],
     }
-    with open(json_path, "w") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, default=str)
 
-    print("\n" + "=" * 80)
-    print("Demo Complete!")
-    print("=" * 80)
-    print(f"\n✓ Markdown report saved to: {report_path}")
-    print(f"✓ JSON summary saved to: {json_path}")
+    print(f"\n{c('━' * 70, Colors.YELLOW)}")
+    print(f"{c('Demo Complete!', Colors.BOLD + Colors.YELLOW)}")
+    print(f"{c('━' * 70, Colors.YELLOW)}")
+    print("")
+    print(f"{c('✓', Colors.GREEN)} Markdown report saved to: {report_path}")
+    print(f"{c('✓', Colors.GREEN)} JSON summary saved to: {json_path}")
+    print("")
+    print(f"{c('--- Report Sections Populated ---', Colors.BOLD + Colors.CYAN)}")
+    print(f"  {c('✓', Colors.GREEN)} Header: Signal info, timestamps")
 
-    # Print section summary
-    print("\n--- Report Sections Populated ---")
-    print("  ✓ Header: Signal info, timestamps")
-    if is_true_positive:
-        print("  ✓ Decision Banner: TRUE_POSITIVE @ 87% TP likelihood")
-    else:
-        print("  ✓ Decision Banner: FALSE_POSITIVE @ 15% TP likelihood")
-    print("  ✓ §1 Summary: SOC + Stakeholder overview")
-    print("  ✓ §2 Action Plan: 7 recommendations with AI enhancements:")
+    disposition_label = {
+        ReportType.TP: "TRUE_POSITIVE",
+        ReportType.FP: "FALSE_POSITIVE",
+        ReportType.BENIGN: "BENIGN",
+    }.get(report_type, "UNKNOWN")
+    tp_likelihood = triage_report.classification.tp_likelihood
+    print(
+        f"  {c('✓', Colors.GREEN)} Decision Banner: {disposition_label} @ {tp_likelihood}% TP likelihood"
+    )
+    print(f"  {c('✓', Colors.GREEN)} §1 Summary: SOC + Stakeholder overview")
+    print(
+        f"  {c('✓', Colors.GREEN)} §2 Action Plan: {len(triage_report.recommendations)} recommendations with AI enhancements:"
+    )
     print("      - 3 AI next checks (query templates)")
     print("      - Action rationale (evidence-backed WHY)")
     print("      - Priority reasoning (action ordering)")
     print("      - 4 additional AI suggestions")
     print("      - 3 action dependencies")
     print("      - 3 action risks")
-    print("  ✓ §3 Normalized Context: Entities, indicators, CVEs")
-    print("  ✓ §4 Correlation & Scope: 3 sightings, 3 hosts impacted")
-    print("  ✓ §5 Threat Intelligence: 3 indicators with TI enrichment")
-    print("  ✓ §6 Exposure: Asset context, 2 host vulns, env exposure")
-    print("  ✓ §7 Trend & Forecast: 3 tracks (Rule/IOC/Entity) with full backtest")
-    print("  ✓ §8 Timeline: 6 correlated events + AI attack chain")
-    print("  ✓ §9 Assessment: 6 TP drivers, 3 FP drivers, MITRE mapping")
-    print("  ✓ §10 Similar Cases: 3 cases with SOAR artifacts + AI narratives")
-    print("  ✓ §11 Closure Criteria: TP/FP decision guidance")
-    print("  ✓ §12 Stakeholder Snapshot: Executive summary")
-    print("  ✓ §13 Data Quality: 3 data gaps, 3 assumptions")
-    print("  ✓ Appendix: Raw signal payload")
+    print(f"  {c('✓', Colors.GREEN)} §3 Normalized Context: Entities, indicators, CVEs")
+    sighting_count = len(triage_report.enrich.local_sightings)
+    host_count = (
+        len(triage_report.enrich.scope.impacted_hosts)
+        if triage_report.enrich.scope
+        else 0
+    )
+    print(
+        f"  {c('✓', Colors.GREEN)} §4 Correlation & Scope: {sighting_count} sightings, {host_count} hosts impacted"
+    )
+    ti_count = len(triage_report.enrich.threat_intel)
+    print(
+        f"  {c('✓', Colors.GREEN)} §5 Threat Intelligence: {ti_count} indicators with TI enrichment"
+    )
+    vuln_count = len(triage_report.enrich.host_vulns)
+    print(
+        f"  {c('✓', Colors.GREEN)} §6 Exposure: Asset context, {vuln_count} host vulns, env exposure"
+    )
+    print(
+        f"  {c('✓', Colors.GREEN)} §7 Trend & Forecast: 3 tracks (Rule/IOC/Entity) with full backtest"
+    )
+    timeline_count = len(triage_report.enrich.related_events)
+    print(
+        f"  {c('✓', Colors.GREEN)} §8 Timeline: {timeline_count} correlated events + AI attack chain"
+    )
+    tp_driver_count = len(triage_report.classification.reasons_tp)
+    fp_driver_count = len(triage_report.classification.reasons_fp)
+    print(
+        f"  {c('✓', Colors.GREEN)} §9 Assessment: {tp_driver_count} TP drivers, {fp_driver_count} FP drivers, MITRE mapping"
+    )
+    similar_count = len(triage_report.similar_cases)
+    print(
+        f"  {c('✓', Colors.GREEN)} §10 Similar Cases: {similar_count} cases with SOAR artifacts + AI narratives"
+    )
+    print(f"  {c('✓', Colors.GREEN)} §11 Closure Criteria: TP/FP decision guidance")
+    print(f"  {c('✓', Colors.GREEN)} §12 Stakeholder Snapshot: Executive summary")
+    print(f"  {c('✓', Colors.GREEN)} §13 Data Quality: 3 data gaps, 3 assumptions")
+    print(f"  {c('✓', Colors.GREEN)} Appendix: Raw signal payload")
 
-    # Show report preview (first 50 lines) instead of full dump
-    print("\n" + "=" * 80)
-    print("REPORT PREVIEW (first 50 lines)")
-    print("=" * 80)
-    report_lines = report.splitlines()
-    for line in report_lines[:50]:
+    # Report preview
+    print(f"\n{c('━' * 70, Colors.CYAN)}")
+    print(f"{c('REPORT PREVIEW (first 50 lines)', Colors.BOLD + Colors.CYAN)}")
+    print(f"{c('━' * 70, Colors.CYAN)}")
+    for line in report.splitlines()[:50]:
         print(line)
-    print("\n... [truncated - see full report in output file] ...")
-    print(f"\n📄 Full report ({len(report_lines)} lines): {report_path}")
+    print(f"\n... [truncated - see full report: {report_path}] ...")
+    print(
+        f"\n{c('📄', Colors.CYAN)} Full report ({len(report.splitlines())} lines): {report_path}"
+    )
+
+    return signal.signal_id
 
 
-if __name__ == "__main__":
-    # Parse command line arguments
+def main():
+    """Main entry point with CLI argument parsing."""
     parser = argparse.ArgumentParser(
-        description="SOC Triage Bot Demo - Generate True Positive or False Positive reports"
+        description="SOC Triage Bot Demo - Generate triage reports with proper phase enumeration",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python demo.py                          # Default: TP report from soar_container.json
+  python demo.py -type tp                 # True Positive report
+  python demo.py -type fp                 # False Positive report
+  python demo.py -type benign             # Benign activity report
+  python demo.py -input examples/custom.json  # Custom input file
+
+Pipeline Phases (12 mandatory + 1 optional):
+  Phase 1:   CaseBootstrapService       Phase 7:   ClassificationService
+  Phase 1.5: CanonicalizeService        Phase 8:   RunbookRegistry
+  Phase 2:   SourceHydratorService      Phase 9:   ActionProposalService
+  Phase 3:   EnrichmentService          Phase 10:  GovernanceGate
+  Phase 4:   HistoricalDataService      Phase 11:  AIService (optional)
+  Phase 5:   ForecastingService         Phase 12:  ReportService
+  Phase 6:   CaseContextLinkingService
+        """,
     )
     parser.add_argument(
-        "--type",
-        choices=["true", "false"],
-        default="true",
-        help="Report type: 'true' for True Positive, 'false' for False Positive (default: true)",
+        "-type",
+        choices=["tp", "fp", "benign"],
+        default="tp",
+        help="Report type: 'tp' (True Positive), 'fp' (False Positive), 'benign' (default: tp)",
+    )
+    parser.add_argument(
+        "-input",
+        type=str,
+        default=None,
+        help="Path to SOAR container JSON file (default: examples/soar_container.json)",
     )
     args = parser.parse_args()
 
-    # Determine if this is a true positive report
-    is_true_positive = args.type == "true"
+    # Default input file
+    if args.input is None:
+        examples_dir = Path(__file__).parent.parent / "examples"
+        input_file = str(examples_dir / "soar_container.json")
+    else:
+        input_file = args.input
 
-    # Capture console output (stdout and stderr) to buffer while also displaying to terminal
+    # Verify input file exists
+    if not Path(input_file).exists():
+        print(f"Error: Input file not found: {input_file}")
+        sys.exit(1)
+
+    # Capture console output
     console_buffer = io.StringIO()
     original_stdout = sys.stdout
     original_stderr = sys.stderr
@@ -1807,16 +1237,22 @@ if __name__ == "__main__":
     sys.stderr = TeeIO(original_stderr, console_buffer)
 
     try:
-        asyncio.run(run_demo(is_true_positive))
+        signal_id = asyncio.run(run_demo(args.type, input_file))
     finally:
-        # Restore original stdout and stderr
+        # Restore stdout/stderr
         sys.stdout = original_stdout
         sys.stderr = original_stderr
 
-        # Save console log to output directory
-        output_dir = Path(__file__).parent / "soc_triage_bot" / "output"
+        # Save console log (strip ANSI codes for clean text file)
+        output_dir = Path(__file__).parent.parent / "soc_triage_bot" / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
-        console_log_path = output_dir / "console.log"
+        console_log_filename = f"console_{signal_id}_{args.type}.log"
+        console_log_path = output_dir / console_log_filename
         with open(console_log_path, "w", encoding="utf-8") as f:
-            f.write(console_buffer.getvalue())
-        print(f"✓ Console log saved to: {console_log_path}")
+            clean_output = strip_ansi_codes(console_buffer.getvalue())
+            f.write(clean_output)
+        print(f"  {c('✓', Colors.GREEN)} Console log: {console_log_path}")
+
+
+if __name__ == "__main__":
+    main()

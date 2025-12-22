@@ -417,23 +417,69 @@ class ClassificationService:
         return base_severity
 
     def _generate_mitre_mapping(self, signal: Signal) -> MitreMapping:
-        """Generate MITRE mapping from signal."""
-        # In production, would use detection rule metadata
-        # For now, basic mapping based on signal type
-        mitre_map = {
+        """Generate MITRE mapping from signal using signal_subtype for accuracy.
+
+        Uses signal_subtype (derived from content analysis) to provide more accurate
+        MITRE mapping. For example, a SOAR case containing IOC data will have
+        signal_subtype="ioc" and get C2-related MITRE tactics.
+        """
+        # Subtype-based mapping (more accurate for SOAR cases with mixed content)
+        subtype_mitre_map = {
+            "auth": (
+                ["TA0006", "TA0003"],
+                ["T1110", "T1078"],
+            ),  # Credential Access + Persistence
+            "endpoint": (
+                ["TA0002", "TA0005"],
+                ["T1059", "T1055"],
+            ),  # Execution + Defense Evasion
+            "network": (["TA0011", "TA0010"], ["T1071", "T1041"]),  # C2 + Exfiltration
+            "email": (["TA0001"], ["T1566"]),  # Initial Access (Phishing)
+            "ioc": (["TA0011"], ["T1071", "T1102"]),  # C2 indicators
+            "vuln": (["TA0001"], ["T1190"]),  # Initial Access (Exploitation)
+            "hunt": (["TA0007"], ["T1083", "T1082"]),  # Discovery
+        }
+
+        # Type-based mapping (fallback)
+        type_mitre_map = {
             "siem_alert": (["TA0001"], ["T1190"]),  # Initial Access
             "ioc": (["TA0011"], ["T1071"]),  # C2
             "cve": (["TA0001"], ["T1190"]),  # Initial Access
             "edr_detection": (["TA0002"], ["T1059"]),  # Execution
             "email_security_alert": (["TA0001"], ["T1566"]),  # Phishing
         }
-        signal_type = signal.signal_type.value.lower()
-        tactics, techniques = mitre_map.get(signal_type, ([], []))
+
+        # Prefer subtype mapping for more accurate results
+        signal_subtype = signal.metadata.get("signal_subtype", "")
+        if signal_subtype in subtype_mitre_map:
+            tactics, techniques = subtype_mitre_map[signal_subtype]
+        else:
+            # Fallback to type-based mapping
+            signal_type = signal.signal_type.value.lower()
+            tactics, techniques = type_mitre_map.get(signal_type, ([], []))
 
         return MitreMapping(tactics=tactics, techniques=techniques)
 
     def _determine_incident_type(self, signal: Signal, mitre: MitreMapping) -> str:
-        """Determine incident type."""
+        """Determine incident type using signal_subtype for accuracy.
+
+        Uses signal_subtype (derived from content analysis) to provide more accurate
+        incident type. For example, a SOAR case containing IOC data will have
+        signal_subtype="ioc" and be classified as "Indicator Match".
+        """
+        # Subtype-based incident type (more accurate for mixed-content signals)
+        subtype_type_map = {
+            "auth": "Authentication Security Event",
+            "endpoint": "Endpoint Detection",
+            "network": "Network Security Event",
+            "email": "Email Threat",
+            "ioc": "Indicator Match",
+            "vuln": "Vulnerability Exploitation",
+            "hunt": "Threat Hunt Finding",
+            "user": "User Report",
+        }
+
+        # Type-based mapping (fallback)
         type_map = {
             "siem_alert": "Security Alert",
             "ioc": "Indicator Match",
@@ -442,6 +488,12 @@ class ClassificationService:
             "email_security_alert": "Email Threat",
             "hunt": "Threat Hunt Finding",
         }
+
+        # Prefer subtype for more accurate classification
+        signal_subtype = signal.metadata.get("signal_subtype", "")
+        if signal_subtype in subtype_type_map:
+            return subtype_type_map[signal_subtype]
+
         return type_map.get(signal.signal_type.value.lower(), "Security Incident")
 
     def _generate_triage_judgment(

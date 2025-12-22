@@ -1,43 +1,69 @@
 {
   "id": 107,
   "label": "incident",
-  "name": "Suspicious PowerShell Activity",
+  "name": "Malicious IOC Alert - Known C2 Domain and Hash",
   "source_data_identifier": "64c2a9a4-d6ef-4da8-ad6f-982d785f14b2",
-  "description": "Base64 encoded PowerShell detected on workstation",
+  "description": "IOC match detected: malicious domain and file hash indicators associated with known C2 infrastructure",
   "severity": "high",
   "status": "open",
   "sensitivity": "amber",
   "owner": "admin",
-  "tags": ["powershell", "malware"],
+  "tags": ["ioc", "indicator", "malicious", "hash", "domain", "c2"],
   "create_time": "2025-10-24T21:11:29.805433Z",
   "open_time": "2025-10-24T21:11:29.805433Z",
   "container_update_time": "2025-10-24T21:15:00.000000Z",
-  "artifact_count": 2,
+  "artifact_count": 3,
   "hash": "a3f5b8c2d1e4f7890abcdef123456789",
   "asset_name": "WORKSTATION-042",
   "data": {
     "artifacts": [
       {
         "id": 1,
-        "name": "Network Event",
-        "type": "network",
+        "name": "Malicious Domain IOC",
+        "type": "domain",
         "cef": {
+          "destinationDnsDomain": "evil-c2-server.com",
           "sourceAddress": "10.0.0.5",
           "destinationAddress": "203.0.113.50",
-          "destinationHostName": "evil.com",
-          "sourceHostName": "WORKSTATION-042",
-          "destinationDnsDomain": "evil.com"
+          "sourceHostName": "WORKSTATION-042"
+        },
+        "indicator": {
+          "type": "domain",
+          "value": "evil-c2-server.com",
+          "confidence": "high",
+          "source": "ThreatIntel Feed"
         }
       },
       {
         "id": 2,
-        "name": "Process Event",
-        "type": "process",
+        "name": "Malicious File Hash IOC",
+        "type": "hash",
         "cef": {
-          "deviceProcessName": "powershell.exe",
-          "fileHashSha256": "abc123def456789012345678901234567890123456789012345678901234567",
+          "fileHashSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "deviceProcessName": "malware.exe",
           "suser": "jdoe",
           "sourceHostName": "WORKSTATION-042"
+        },
+        "indicator": {
+          "type": "sha256",
+          "value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "confidence": "high",
+          "source": "VirusTotal"
+        }
+      },
+      {
+        "id": 3,
+        "name": "Malicious IP IOC",
+        "type": "ip",
+        "cef": {
+          "destinationAddress": "203.0.113.50",
+          "sourceHostName": "WORKSTATION-042"
+        },
+        "indicator": {
+          "type": "ip",
+          "value": "203.0.113.50",
+          "confidence": "medium",
+          "source": "AbuseIPDB"
         }
       }
     ]
