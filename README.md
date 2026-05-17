@@ -25,7 +25,7 @@ An async, SIEM-agnostic SOC triage agent service that automates security alert a
 
 ```bash
 # Clone the repository
-git clone https://github.com/Maxthecoder1/soc_triage_bot.git
+git clone https://github.com/lumen-maximus/soc_triage_bot.git
 cd soc_triage_bot
 
 # Install dependencies
